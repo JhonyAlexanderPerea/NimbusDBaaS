@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=1280" />
+<title>NimbusDBaaS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #F5F6FA;
+    --surface:   #FFFFFF;
+    --border:    #E2E5EF;
+    --border-md: #C9CEDF;
+    --text-primary:   #111827;
+    --text-secondary: #4B5563;
+    --text-muted:     #9CA3AF;
+    --blue-50:   #EFF4FF;
+    --blue-100:  #DBEAFE;
+    --blue-600:  #2563EB;
+    --blue-700:  #1D4ED8;
+    --blue-800:  #1E3A8A;
+    --green-50:  #F0FDF4;
+    --green-600: #16A34A;
+    --green-100: #DCFCE7;
+    --maria-bg:  #ECFDF5;
+    --maria-text:#065F46;
+    --pg-bg:     #EFF6FF;
+    --pg-text:   #1E3A8A;
+    --red-50:    #FEF2F2;
+    --red-600:   #DC2626;
+    --red-text:  #991B1B;
+    --yellow-50: #FFFBEB;
+    --yellow-600:#D97706;
+    --yellow-100:#FEF3C7;
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+  }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text-primary);
+    font-size: 13px;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  /* ── TOP BAR ── */
+  .topbar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    height: 52px;
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    gap: 12px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .logo-mark {
+    width: 34px; height: 34px;
+    background: var(--blue-600);
+    border-radius: var(--radius-md);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .logo-mark i { color: #fff; font-size: 18px; }
+  .logo-text { font-size: 15px; font-weight: 600; color: var(--text-primary); letter-spacing: -0.3px; }
+  .logo-text span { color: var(--blue-600); }
+  .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .pill {
+    font-size: 11px; font-weight: 500;
+    background: var(--blue-50); color: var(--blue-700);
+    padding: 3px 10px; border-radius: 99px;
+    border: 1px solid var(--blue-100);
+  }
+  .avatar {
+    width: 30px; height: 30px; border-radius: 50%;
+    background: var(--blue-100); color: var(--blue-800);
+    font-size: 11px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  /* ── LAYOUT ── */
+  .layout { display: flex; min-height: calc(100vh - 52px); }
+
+  /* ── SIDEBAR ── */
+  .sidebar {
+    width: 220px; flex-shrink: 0;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 16px 0;
+  }
+  .sidebar-section {
+    font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
+    color: var(--text-muted); text-transform: uppercase;
+    padding: 14px 18px 4px;
+  }
+  .sidebar-item {
+    display: flex; align-items: center; gap: 9px;
+    padding: 8px 18px;
+    font-size: 13px; color: var(--text-secondary);
+    cursor: pointer;
+    border-left: 2px solid transparent;
+    transition: all 0.15s;
+    user-select: none;
+  }
+  .sidebar-item i { font-size: 15px; }
+  .sidebar-item:hover { background: var(--bg); color: var(--text-primary); }
+  .sidebar-item.active {
+    color: var(--blue-600);
+    border-left-color: var(--blue-600);
+    background: var(--blue-50);
+    font-weight: 500;
+  }
+
+  /* ── CONTENT ── */
+  .content { flex: 1; padding: 24px; display: flex; flex-direction: column; gap: 18px; }
+  .view { display: none; flex-direction: column; gap: 18px; }
+  .view.active { display: flex; }
+
+  /* ── PANEL ── */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 20px 22px;
+    box-shadow: var(--shadow-sm);
+  }
+  .panel-header {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 18px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .panel-header i { font-size: 17px; color: var(--blue-600); }
+  .panel-header h2 { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+
+  /* ── FORM ── */
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .form-group { display: flex; flex-direction: column; gap: 5px; }
+  .form-group.full { grid-column: 1 / -1; }
+  .form-label { font-size: 11px; font-weight: 500; color: var(--text-secondary); letter-spacing: 0.02em; }
+  .form-input {
+    height: 36px; padding: 0 12px;
+    border: 1px solid var(--border-md);
+    border-radius: var(--radius-sm);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px; color: var(--text-primary);
+    background: #FAFBFD;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .form-input::placeholder { color: var(--text-muted); }
+  .form-input:focus { border-color: var(--blue-600); box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+  .form-input.error { border-color: var(--red-600); }
+
+  /* engine selector */
+  .engine-row { display: flex; gap: 10px; }
+  .engine-opt {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 16px;
+    border: 1px solid var(--border-md);
+    border-radius: var(--radius-sm);
+    font-size: 13px; color: var(--text-secondary);
+    cursor: pointer; background: #FAFBFD;
+    transition: all 0.15s;
+    user-select: none;
+  }
+  .engine-opt i { font-size: 15px; }
+  .engine-opt:hover { border-color: var(--blue-600); }
+  .engine-opt.selected {
+    border-color: var(--blue-600);
+    background: var(--blue-50);
+    color: var(--blue-700);
+    font-weight: 500;
+  }
+  .engine-dot { width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--border-md); transition: all 0.15s; }
+  .engine-opt.selected .engine-dot { border-color: var(--blue-600); background: var(--blue-600); }
+
+  /* file upload */
+  .file-row { display: flex; align-items: center; gap: 10px; }
+  .file-box {
+    flex: 1; height: 36px; padding: 0 12px;
+    border: 1.5px dashed var(--border-md);
+    border-radius: var(--radius-sm);
+    display: flex; align-items: center; gap: 7px;
+    color: var(--text-muted); font-size: 12px;
+    background: #FAFBFD; cursor: pointer;
+    transition: border-color 0.15s;
+  }
+  .file-box:hover { border-color: var(--blue-600); color: var(--blue-600); }
+  .file-box i { font-size: 15px; }
+  .file-box.has-file { color: var(--green-600); border-color: var(--green-600); background: var(--green-50); }
+  #sql-file-input { display: none; }
+
+  /* buttons */
+  .btn-primary {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 18px;
+    background: var(--blue-600); color: #fff;
+    border: none; border-radius: var(--radius-sm);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px; font-weight: 500;
+    cursor: pointer; white-space: nowrap;
+    box-shadow: 0 1px 3px rgba(37,99,235,0.25);
+    transition: background 0.15s;
+  }
+  .btn-primary:hover { background: var(--blue-700); }
+  .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+  .btn-primary i { font-size: 15px; }
+  .btn-danger {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 12px;
+    background: var(--red-50); color: var(--red-text);
+    border: 1px solid #FECACA;
+    border-radius: var(--radius-sm);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px; font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .btn-danger:hover { background: #FEE2E2; }
+  .btn-danger i { font-size: 14px; }
+
+  /* toast */
+  .toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 100; display: flex; flex-direction: column; gap: 8px; }
+  .toast {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-md); padding: 12px 16px;
+    box-shadow: var(--shadow-md); font-size: 12px;
+    display: flex; align-items: center; gap: 10px;
+    min-width: 260px; max-width: 380px;
+    animation: slideIn 0.2s ease;
+  }
+  .toast.success { border-left: 3px solid var(--green-600); }
+  .toast.error   { border-left: 3px solid var(--red-600); }
+  .toast.info    { border-left: 3px solid var(--blue-600); }
+  @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+  /* ── INSTANCES ── */
+  .instances-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .instance-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 14px 16px;
+    background: #FAFBFD;
+    transition: box-shadow 0.15s;
+  }
+  .instance-card:hover { box-shadow: var(--shadow-md); }
+  .ic-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 10px; }
+  .ic-title-row { display: flex; align-items: center; gap: 8px; }
+  .engine-badge {
+    font-size: 10px; font-weight: 600; padding: 2px 8px;
+    border-radius: 99px; letter-spacing: 0.04em;
+  }
+  .badge-maria { background: var(--maria-bg); color: var(--maria-text); border: 1px solid #A7F3D0; }
+  .badge-pg    { background: var(--pg-bg);    color: var(--pg-text);    border: 1px solid var(--blue-100); }
+  .ic-name  { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+  .ic-user  { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+  .status {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; font-weight: 500;
+    padding: 3px 8px; border-radius: 99px;
+  }
+  .status.running  { color: var(--green-600); background: var(--green-100); }
+  .status.provisioning { color: var(--yellow-600); background: var(--yellow-100); }
+  .status.error    { color: var(--red-text); background: var(--red-50); }
+  .dot { width: 6px; height: 6px; border-radius: 50%; }
+  .running .dot { background: var(--green-600); }
+  .provisioning .dot { background: var(--yellow-600); animation: pulse 1.2s infinite; }
+  .error .dot { background: var(--red-600); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+  .ic-footer { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px; }
+  .info-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 9px 12px;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px; color: var(--text-secondary);
+    line-height: 1.9;
+  }
+  .info-row { display: flex; align-items: center; gap: 6px; }
+  .info-key { color: var(--text-muted); width: 76px; flex-shrink: 0; }
+  .info-val { color: var(--text-primary); font-weight: 500; flex: 1; word-break: break-all; }
+  .copy-btn {
+    margin-left: auto; background: none; border: none;
+    cursor: pointer; color: var(--text-muted); padding: 2px 4px;
+    font-size: 13px; line-height: 1; border-radius: 4px;
+    transition: color 0.15s;
+  }
+  .copy-btn:hover { color: var(--blue-600); }
+
+  .empty-state {
+    text-align: center; padding: 40px 20px; color: var(--text-muted);
+  }
+  .empty-state i { font-size: 32px; display: block; margin-bottom: 8px; }
+
+  /* provisioning overlay */
+  .card-loading {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px; color: var(--yellow-600);
+    font-size: 12px;
+  }
+  .spinner {
+    width: 14px; height: 14px;
+    border: 2px solid var(--yellow-100);
+    border-top-color: var(--yellow-600);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── LOG ── */
+  .log-header {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 12px; padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+    justify-content: space-between;
+  }
+  .log-header-left { display: flex; align-items: center; gap: 8px; }
+  .log-header i { font-size: 17px; color: var(--blue-600); }
+  .log-header h2 { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+  .log-entry {
+    display: flex; gap: 14px; align-items: baseline;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .log-entry:last-child { border-bottom: none; padding-bottom: 0; }
+  .log-time {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px; color: var(--text-muted);
+    white-space: nowrap; flex-shrink: 0;
+  }
+  .log-msg { color: var(--text-secondary); }
+  .log-msg b { color: var(--text-primary); font-weight: 500; }
+  .log-tag {
+    display: inline-block; font-size: 10px; font-weight: 600;
+    padding: 1px 6px; border-radius: 4px; margin-right: 4px;
+    vertical-align: middle;
+  }
+  .tag-info    { background: var(--blue-50);  color: var(--blue-700); }
+  .tag-success { background: var(--green-100); color: var(--green-600); }
+  .tag-error   { background: var(--red-50);   color: var(--red-text); }
+  .tag-warn    { background: var(--yellow-100); color: var(--yellow-600); }
+  .log-empty { color: var(--text-muted); font-size: 12px; padding: 12px 0; }
+
+  /* ── CONFIG VIEW ── */
+  .config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .config-section { margin-bottom: 18px; }
+  .config-section h3 { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 10px; }
+  .config-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 12px;
+  }
+  .config-row:last-child { border-bottom: none; }
+  .config-key { color: var(--text-muted); }
+  .config-val { font-family: 'DM Mono', monospace; color: var(--text-primary); font-size: 11px; }
+  .badge-sim { background: var(--yellow-100); color: var(--yellow-600); border: 1px solid #FDE68A; }
+  .badge-real { background: var(--green-100); color: var(--green-600); border: 1px solid #BBF7D0; }
+
+  /* modal */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.3); z-index: 50;
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; pointer-events: none; transition: opacity 0.2s;
+  }
+  .modal-overlay.open { opacity: 1; pointer-events: auto; }
+  .modal {
+    background: var(--surface); border-radius: var(--radius-lg);
+    padding: 24px; max-width: 400px; width: 90%;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+    transform: scale(0.95); transition: transform 0.2s;
+  }
+  .modal-overlay.open .modal { transform: scale(1); }
+  .modal h3 { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+  .modal p { color: var(--text-secondary); font-size: 13px; margin-bottom: 20px; }
+  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+  .btn-secondary {
+    padding: 7px 16px; background: var(--bg); border: 1px solid var(--border-md);
+    border-radius: var(--radius-sm); font-size: 13px; cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+  }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<header class="topbar">
+  <div class="logo-mark"><i class="ti ti-cloud"></i></div>
+  <span class="logo-text">Nimbus<span>DBaaS</span></span>
+  <div class="topbar-right">
+    <span class="pill"><i class="ti ti-server" style="font-size:12px;vertical-align:-2px;margin-right:4px"></i>Local Env</span>
+    <div class="avatar">US</div>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar">
+    <p class="sidebar-section">General</p>
+    <div class="sidebar-item active" data-view="databases"><i class="ti ti-database"></i> Bases de datos</div>
+    <div class="sidebar-item" data-view="instances"><i class="ti ti-server"></i> Instancias</div>
+    <p class="sidebar-section">Sistema</p>
+    <div class="sidebar-item" data-view="logs"><i class="ti ti-file-text"></i> Registros</div>
+    <div class="sidebar-item" data-view="config"><i class="ti ti-settings"></i> Configuración</div>
+  </nav>
+
+  <!-- MAIN CONTENT -->
+  <main class="content">
+
+    <!-- ── VIEW: BASES DE DATOS ── -->
+    <div class="view active" id="view-databases">
+
+      <!-- CREAR SERVICIO -->
+      <div class="panel">
+        <div class="panel-header">
+          <i class="ti ti-circle-plus"></i>
+          <h2>Crear nueva base de datos</h2>
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Nombre de la base de datos</label>
+            <input class="form-input" id="inp-dbname" type="text" placeholder="ej. Clientes, Inventario…" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Usuario administrador</label>
+            <input class="form-input" id="inp-username" type="text" placeholder="ej. carlos" />
+          </div>
+          <div class="form-group full">
+            <label class="form-label">Motor de base de datos</label>
+            <div class="engine-row" id="engine-row">
+              <div class="engine-opt selected" data-engine="mariadb">
+                <span class="engine-dot"></span>
+                <i class="ti ti-database"></i> MariaDB
+              </div>
+              <div class="engine-opt" data-engine="postgresql">
+                <span class="engine-dot"></span>
+                <i class="ti ti-database"></i> PostgreSQL
+              </div>
+            </div>
+          </div>
+          <div class="form-group full">
+            <label class="form-label">Archivo SQL (opcional)</label>
+            <div class="file-row">
+              <div class="file-box" id="file-box">
+                <i class="ti ti-upload"></i>
+                <span id="file-label">Arrastrar o seleccionar archivo .sql</span>
+              </div>
+              <input type="file" id="sql-file-input" accept=".sql,text/plain" />
+              <button class="btn-primary" id="btn-create">
+                <i class="ti ti-player-play"></i> Crear servicio
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- INSTANCIAS ACTIVAS -->
+      <div class="panel">
+        <div class="panel-header">
+          <i class="ti ti-server-2"></i>
+          <h2>Instancias activas</h2>
+        </div>
+        <div class="instances-grid" id="instances-grid">
+          <div class="empty-state" style="grid-column:1/-1">
+            <i class="ti ti-database-off"></i>
+            No hay instancias activas aún
+          </div>
+        </div>
+      </div>
+
+      <!-- REGISTRO (resumen) -->
+      <div class="panel">
+        <div class="log-header">
+          <div class="log-header-left">
+            <i class="ti ti-activity"></i>
+            <h2>Registro de actividad</h2>
+          </div>
+          <button class="btn-secondary" id="btn-see-all-logs" style="font-size:11px;padding:4px 10px">Ver todo</button>
+        </div>
+        <div id="log-list-home"></div>
+      </div>
+
+    </div><!-- /view-databases -->
+
+    <!-- ── VIEW: INSTANCIAS ── -->
+    <div class="view" id="view-instances">
+      <div class="panel">
+        <div class="panel-header">
+          <i class="ti ti-server-2"></i>
+          <h2>Todas las instancias</h2>
+        </div>
+        <div class="instances-grid" id="instances-grid-full">
+          <div class="empty-state" style="grid-column:1/-1">
+            <i class="ti ti-database-off"></i>
+            No hay instancias
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── VIEW: LOGS ── -->
+    <div class="view" id="view-logs">
+      <div class="panel">
+        <div class="log-header">
+          <div class="log-header-left">
+            <i class="ti ti-activity"></i>
+            <h2>Registro de actividad completo</h2>
+          </div>
+          <button class="btn-secondary" id="btn-refresh-logs" style="font-size:11px;padding:4px 10px"><i class="ti ti-refresh" style="font-size:12px"></i> Actualizar</button>
+        </div>
+        <div id="log-list-full"></div>
+      </div>
+    </div>
+
+    <!-- ── VIEW: CONFIGURACIÓN ── -->
+    <div class="view" id="view-config">
+      <div class="panel">
+        <div class="panel-header">
+          <i class="ti ti-settings"></i>
+          <h2>Configuración del servicio</h2>
+        </div>
+        <div class="config-section">
+          <h3>Entorno de ejecución</h3>
+          <div class="config-row">
+            <span class="config-key">Modo</span>
+            <span class="config-val" id="cfg-mode">—</span>
+          </div>
+          <div class="config-row">
+            <span class="config-key">VBoxManage</span>
+            <span class="config-val" id="cfg-vbox">—</span>
+          </div>
+          <div class="config-row">
+            <span class="config-key">Red Host-Only</span>
+            <span class="config-val" id="cfg-net">—</span>
+          </div>
+          <div class="config-row">
+            <span class="config-key">Base IP</span>
+            <span class="config-val" id="cfg-ip">—</span>
+          </div>
+          <div class="config-row">
+            <span class="config-key">Plantilla MariaDB</span>
+            <span class="config-val" id="cfg-mariatpl">—</span>
+          </div>
+          <div class="config-row">
+            <span class="config-key">Plantilla PostgreSQL</span>
+            <span class="config-val" id="cfg-pgtpl">—</span>
+          </div>
+          <div class="config-row">
+            <span class="config-key">Clave SSH</span>
+            <span class="config-val" id="cfg-sshkey">—</span>
+          </div>
+        </div>
+        <div class="config-section">
+          <h3>Variables de entorno disponibles</h3>
+          <div class="config-row">
+            <span class="config-key">NIMBUS_SIMULATED</span>
+            <span class="config-val">1 (simulado) | 0 (real)</span>
+          </div>
+          <div class="config-row">
+            <span class="config-key">NIMBUS_MARIADB_TEMPLATE</span>
+            <span class="config-val">Nombre de la VM plantilla MariaDB</span>
+          </div>
+          <div class="config-row">
+            <span class="config-key">NIMBUS_PG_TEMPLATE</span>
+            <span class="config-val">Nombre de la VM plantilla PostgreSQL</span>
+          </div>
+          <div class="config-row">
+            <span class="config-key">NIMBUS_HOST_ONLY_NET</span>
+            <span class="config-val">Adaptador host-only (ej. vboxnet0)</span>
+          </div>
+          <div class="config-row">
+            <span class="config-key">NIMBUS_SSH_KEY</span>
+            <span class="config-val">Ruta a la llave privada SSH</span>
+          </div>
+          <div class="config-row">
+            <span class="config-key">NIMBUS_BASE_IP</span>
+            <span class="config-val">Prefijo IP (ej. 192.168.56)</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- TOAST -->
+<div class="toast-container" id="toast-container"></div>
+
+<!-- DELETE CONFIRM MODAL -->
+<div class="modal-overlay" id="delete-modal">
+  <div class="modal">
+    <h3>¿Eliminar instancia?</h3>
+    <p id="delete-modal-body">Se detendrá y eliminará la máquina virtual. Esta acción no se puede deshacer.</p>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="btn-cancel-delete">Cancelar</button>
+      <button class="btn-danger" id="btn-confirm-delete"><i class="ti ti-trash"></i> Eliminar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+//  NimbusDBaaS – Frontend
+// ═══════════════════════════════════════════════════════
+
+// ── State ──────────────────────────────────────────────
+let instances = [];
+let logs = [];
+let selectedEngine = 'mariadb';
+let sqlFileContent = '';
+let pollTimer = null;
+let pendingDeleteId = null;
+
+// ── Sidebar navigation ─────────────────────────────────
+document.querySelectorAll('.sidebar-item').forEach(item => {
+  item.addEventListener('click', () => {
+    document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    item.classList.add('active');
+    const viewId = 'view-' + item.dataset.view;
+    document.getElementById(viewId).classList.add('active');
+    if (item.dataset.view === 'logs') refreshLogs();
+    if (item.dataset.view === 'config') renderConfig();
+  });
+});
+
+document.getElementById('btn-see-all-logs').addEventListener('click', () => {
+  document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelector('[data-view="logs"]').classList.add('active');
+  document.getElementById('view-logs').classList.add('active');
+  refreshLogs();
+});
+
+document.getElementById('btn-refresh-logs').addEventListener('click', refreshLogs);
+
+// ── Engine selector ─────────────────────────────────────
+document.getElementById('engine-row').addEventListener('click', e => {
+  const opt = e.target.closest('.engine-opt');
+  if (!opt) return;
+  document.querySelectorAll('.engine-opt').forEach(o => o.classList.remove('selected'));
+  opt.classList.add('selected');
+  selectedEngine = opt.dataset.engine;
+});
+
+// ── File picker ─────────────────────────────────────────
+const fileBox = document.getElementById('file-box');
+const fileInput = document.getElementById('sql-file-input');
+const fileLabel = document.getElementById('file-label');
+
+fileBox.addEventListener('click', () => fileInput.click());
+fileBox.addEventListener('dragover', e => { e.preventDefault(); fileBox.style.borderColor = 'var(--blue-600)'; });
+fileBox.addEventListener('dragleave', () => { fileBox.style.borderColor = ''; });
+fileBox.addEventListener('drop', e => {
+  e.preventDefault();
+  fileBox.style.borderColor = '';
+  const file = e.dataTransfer.files[0];
+  if (file) handleFile(file);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) handleFile(fileInput.files[0]);
+});
+
+function handleFile(file) {
+  const reader = new FileReader();
+  reader.onload = ev => {
+    sqlFileContent = ev.target.result;
+    fileLabel.textContent = file.name;
+    fileBox.classList.add('has-file');
+    fileBox.querySelector('i').className = 'ti ti-file-check';
+  };
+  reader.readAsText(file);
+}
+
+// ── Create instance ─────────────────────────────────────
+document.getElementById('btn-create').addEventListener('click', async () => {
+  const dbName = document.getElementById('inp-dbname').value.trim();
+  const username = document.getElementById('inp-username').value.trim();
+
+  if (!dbName) { showToast('El nombre de la base de datos es requerido', 'error'); return; }
+  if (!username) { showToast('El nombre de usuario es requerido', 'error'); return; }
+
+  const btn = document.getElementById('btn-create');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner" style="border-color:rgba(255,255,255,0.3);border-top-color:#fff"></span> Creando…';
+
+  try {
+    const payload = { db_name: dbName, username, engine: selectedEngine, sql_content: sqlFileContent };
+    const res = await fetch('/api/instances', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error desconocido');
+
+    showToast(`Provisionando "${dbName}" — recibirás los datos de acceso en breve`, 'info');
+    document.getElementById('inp-dbname').value = '';
+    document.getElementById('inp-username').value = '';
+    sqlFileContent = '';
+    fileLabel.textContent = 'Arrastrar o seleccionar archivo .sql';
+    fileBox.classList.remove('has-file');
+    fileBox.querySelector('i').className = 'ti ti-upload';
+
+    await refresh();
+    startPolling();
+  } catch(err) {
+    showToast(err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ti ti-player-play"></i> Crear servicio';
+  }
+});
+
+// ── Delete flow ─────────────────────────────────────────
+const deleteModal = document.getElementById('delete-modal');
+
+document.getElementById('btn-cancel-delete').addEventListener('click', () => closeModal());
+document.getElementById('btn-confirm-delete').addEventListener('click', async () => {
+  if (!pendingDeleteId) return;
+  closeModal();
+  const inst = instances.find(i => i.id === pendingDeleteId);
+  try {
+    const res = await fetch(`/api/instances/${pendingDeleteId}`, { method: 'DELETE' });
+    if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
+    showToast(`Eliminando instancia "${inst?.db_name || ''}"`, 'info');
+    await refresh();
+  } catch(err) {
+    showToast(err.message, 'error');
+  }
+  pendingDeleteId = null;
+});
+
+function confirmDelete(id, name) {
+  pendingDeleteId = id;
+  document.getElementById('delete-modal-body').textContent =
+    `Se detendrá y eliminará la máquina virtual de "${name}". Esta acción no se puede deshacer.`;
+  deleteModal.classList.add('open');
+}
+function closeModal() { deleteModal.classList.remove('open'); pendingDeleteId = null; }
+deleteModal.addEventListener('click', e => { if (e.target === deleteModal) closeModal(); });
+
+// ── Render instances ────────────────────────────────────
+function renderInstances(list, containerId) {
+  const grid = document.getElementById(containerId);
+  if (!list || list.length === 0) {
+    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">
+      <i class="ti ti-database-off"></i>No hay instancias activas aún</div>`;
+    return;
+  }
+  grid.innerHTML = list.map(inst => instanceCard(inst)).join('');
+}
+
+function instanceCard(inst) {
+  const isMaria = inst.engine === 'mariadb';
+  const badgeClass = isMaria ? 'badge-maria' : 'badge-pg';
+  const badgeLabel = isMaria ? 'MariaDB' : 'PostgreSQL';
+
+  let statusHtml = '';
+  if (inst.status === 'running') {
+    statusHtml = `<span class="status running"><span class="dot"></span> En ejecución</span>`;
+  } else if (inst.status === 'provisioning') {
+    statusHtml = `<span class="status provisioning"><span class="dot"></span> Provisionando…</span>`;
+  } else if (inst.status === 'error') {
+    statusHtml = `<span class="status error"><span class="dot"></span> Error</span>`;
+  } else {
+    statusHtml = `<span class="status provisioning"><span class="dot"></span> ${inst.status}</span>`;
+  }
+
+  let bodyHtml = '';
+  if (inst.status === 'provisioning') {
+    bodyHtml = `<div class="card-loading"><div class="spinner"></div> Preparando máquina virtual y base de datos…</div>`;
+  } else if (inst.status === 'error') {
+    bodyHtml = `<div style="color:var(--red-text);font-size:11px;padding:8px 0">${escHtml(inst.error_msg || 'Error desconocido')}</div>`;
+  } else {
+    bodyHtml = `
+      <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+        <button class="btn-danger" onclick="confirmDelete('${inst.id}','${escHtml(inst.db_name)}')">
+          <i class="ti ti-trash"></i> Eliminar
+        </button>
+      </div>
+      <div class="info-block">
+        <div class="info-row">
+          <span class="info-key">Host</span>
+          <span class="info-val">${escHtml(inst.host)}</span>
+          <button class="copy-btn" onclick="copyText('${escHtml(inst.host)}',this)" title="Copiar"><i class="ti ti-copy"></i></button>
+        </div>
+        <div class="info-row">
+          <span class="info-key">Puerto</span>
+          <span class="info-val">${inst.port}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-key">Usuario</span>
+          <span class="info-val">${escHtml(inst.username)}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-key">Contraseña</span>
+          <span class="info-val">${escHtml(inst.password)}</span>
+          <button class="copy-btn" onclick="copyText('${escHtml(inst.password)}',this)" title="Copiar"><i class="ti ti-copy"></i></button>
+        </div>
+        <div class="info-row">
+          <span class="info-key">Base de datos</span>
+          <span class="info-val">${escHtml(inst.db_name)}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-key">Acceso</span>
+          <span class="info-val" style="font-size:10px">${escHtml(inst.access_cmd)}</span>
+          <button class="copy-btn" onclick="copyText('${escHtml(inst.access_cmd)}',this)" title="Copiar"><i class="ti ti-copy"></i></button>
+        </div>
+      </div>`;
+  }
+
+  return `
+  <div class="instance-card">
+    <div class="ic-header">
+      <div>
+        <div class="ic-title-row">
+          <span class="engine-badge ${badgeClass}">${badgeLabel}</span>
+          <span class="ic-name">${escHtml(inst.db_name)}</span>
+        </div>
+        <div class="ic-user">usuario: ${escHtml(inst.username)}</div>
+      </div>
+      ${statusHtml}
+    </div>
+    <div class="ic-footer">${bodyHtml}</div>
+  </div>`;
+}
+
+// ── Render logs ─────────────────────────────────────────
+function renderLogs(list, containerId, limit) {
+  const el = document.getElementById(containerId);
+  if (!list || list.length === 0) {
+    el.innerHTML = `<div class="log-empty">No hay registros de actividad aún.</div>`;
+    return;
+  }
+  const display = limit ? list.slice(-limit) : list;
+  el.innerHTML = display.map(log => {
+    const ts = new Date(log.created_at);
+    const timeStr = ts.toLocaleString('es-CO', { year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false });
+    const tagClass = { INFO:'tag-info', OK:'tag-success', ERROR:'tag-error', WARN:'tag-warn' }[log.level] || 'tag-info';
+    return `<div class="log-entry">
+      <span class="log-time">[${timeStr}]</span>
+      <span class="log-msg"><span class="log-tag ${tagClass}">${log.level}</span>${escHtml(log.message)}</span>
+    </div>`;
+  }).join('');
+}
+
+// ── Config view ─────────────────────────────────────────
+function renderConfig() {
+  // We'll show env-based config (static info since Go doesn't expose it via API yet)
+  // Show defaults matching what provisioner uses
+  document.getElementById('cfg-mode').innerHTML = `<span class="engine-badge badge-sim">SIMULADO</span>`;
+  document.getElementById('cfg-vbox').textContent = 'VBoxManage';
+  document.getElementById('cfg-net').textContent = 'vboxnet0';
+  document.getElementById('cfg-ip').textContent = '192.168.56.x';
+  document.getElementById('cfg-mariatpl').textContent = 'nimbus-mariadb-template';
+  document.getElementById('cfg-pgtpl').textContent = 'nimbus-pg-template';
+  document.getElementById('cfg-sshkey').textContent = '~/.ssh/nimbus_id_rsa';
+}
+
+// ── Data refresh ────────────────────────────────────────
+async function refresh() {
+  try {
+    const [instRes, logRes] = await Promise.all([
+      fetch('/api/instances'),
+      fetch('/api/logs')
+    ]);
+    instances = await instRes.json();
+    logs = await logRes.json();
+
+    renderInstances(instances, 'instances-grid');
+    renderInstances(instances, 'instances-grid-full');
+    renderLogs(logs, 'log-list-home', 6);
+    renderLogs(logs, 'log-list-full', 0);
+  } catch(err) {
+    console.error('Refresh error:', err);
+  }
+}
+
+async function refreshLogs() {
+  try {
+    const res = await fetch('/api/logs');
+    logs = await res.json();
+    renderLogs(logs, 'log-list-full', 0);
+    renderLogs(logs, 'log-list-home', 6);
+  } catch(err) { console.error(err); }
+}
+
+// Poll while there are provisioning instances
+function startPolling() {
+  if (pollTimer) return;
+  pollTimer = setInterval(async () => {
+    await refresh();
+    const hasProvisioning = instances.some(i => i.status === 'provisioning');
+    if (!hasProvisioning) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  }, 3000);
+}
+
+// ── Utilities ───────────────────────────────────────────
+function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function copyText(text, btn) {
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.innerHTML;
+    btn.innerHTML = '<i class="ti ti-check"></i>';
+    btn.style.color = 'var(--green-600)';
+    setTimeout(() => { btn.innerHTML = orig; btn.style.color = ''; }, 1500);
+  });
+}
+
+function showToast(msg, type = 'info') {
+  const container = document.getElementById('toast-container');
+  const icons = { success: 'ti-circle-check', error: 'ti-circle-x', info: 'ti-info-circle' };
+  const colors = { success: 'var(--green-600)', error: 'var(--red-600)', info: 'var(--blue-600)' };
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.innerHTML = `<i class="ti ${icons[type]}" style="color:${colors[type]};font-size:16px;flex-shrink:0"></i><span>${escHtml(msg)}</span>`;
+  container.appendChild(toast);
+  setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; setTimeout(() => toast.remove(), 300); }, 4000);
+}
+
+// ── Init ─────────────────────────────────────────────────
+refresh();
+// Check if there's any provisioning on load
+setTimeout(async () => {
+  const hasProvisioning = instances.some(i => i.status === 'provisioning');
+  if (hasProvisioning) startPolling();
+}, 500);
+</script>
+</body>
+</html>
