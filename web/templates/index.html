@@ -272,10 +272,12 @@
     padding: 3px 8px; border-radius: 99px;
   }
   .status.running  { color: var(--green-600); background: var(--green-100); }
+  .status.stopped  { color: var(--text-secondary); background: var(--border-md); }
   .status.provisioning { color: var(--yellow-600); background: var(--yellow-100); }
   .status.error    { color: var(--red-text); background: var(--red-50); }
   .dot { width: 6px; height: 6px; border-radius: 50%; }
   .running .dot { background: var(--green-600); }
+  .stopped .dot { background: var(--text-secondary); }
   .provisioning .dot { background: var(--yellow-600); animation: pulse 1.2s infinite; }
   .error .dot { background: var(--red-600); }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
@@ -560,6 +562,26 @@
             <span class="config-val" id="cfg-pgtpl">—</span>
           </div>
           <div class="config-row">
+            <span class="config-key">Snapshot base</span>
+            <span class="config-val" id="cfg-snapshot">—</span>
+          </div>
+          <div class="config-row">
+            <span class="config-key">ISO Debian</span>
+            <span class="config-val" id="cfg-iso">—</span>
+          </div>
+          <div class="config-row">
+            <span class="config-key">URL ISO Debian</span>
+            <span class="config-val" id="cfg-iso-url">—</span>
+          </div>
+          <div class="config-row">
+            <span class="config-key">Usuario bootstrap</span>
+            <span class="config-val" id="cfg-template-user">—</span>
+          </div>
+          <div class="config-row">
+            <span class="config-key">Password bootstrap</span>
+            <span class="config-val" id="cfg-template-password">—</span>
+          </div>
+          <div class="config-row">
             <span class="config-key">Clave SSH</span>
             <span class="config-val" id="cfg-sshkey">—</span>
           </div>
@@ -577,6 +599,26 @@
           <div class="config-row">
             <span class="config-key">NIMBUS_PG_TEMPLATE</span>
             <span class="config-val">Nombre de la VM plantilla PostgreSQL</span>
+          </div>
+          <div class="config-row">
+            <span class="config-key">NIMBUS_TEMPLATE_SNAPSHOT</span>
+            <span class="config-val">Snapshot base usado para los linked clones</span>
+          </div>
+          <div class="config-row">
+            <span class="config-key">NIMBUS_TEMPLATE_ISO</span>
+            <span class="config-val">Ruta local de la ISO Debian descargada</span>
+          </div>
+          <div class="config-row">
+            <span class="config-key">NIMBUS_TEMPLATE_ISO_URL</span>
+            <span class="config-val">URL remota de la ISO Debian</span>
+          </div>
+          <div class="config-row">
+            <span class="config-key">NIMBUS_TEMPLATE_USER</span>
+            <span class="config-val">Usuario creado durante el bootstrap unattended</span>
+          </div>
+          <div class="config-row">
+            <span class="config-key">NIMBUS_TEMPLATE_PASSWORD</span>
+            <span class="config-val">Contraseña del bootstrap unattended</span>
           </div>
           <div class="config-row">
             <span class="config-key">NIMBUS_HOST_ONLY_NET</span>
@@ -754,6 +796,35 @@ function confirmDelete(id, name) {
 function closeModal() { deleteModal.classList.remove('open'); pendingDeleteId = null; }
 deleteModal.addEventListener('click', e => { if (e.target === deleteModal) closeModal(); });
 
+async function retryInstance(id, name) {
+  try {
+    const res = await fetch(`/api/instances/${id}/retry`, { method: 'POST' });
+    if (!res.ok) {
+      const d = await res.json();
+      throw new Error(d.error || 'No se pudo reintentar');
+    }
+    showToast(`Reintentando instancia "${name}"`, 'info');
+    await refresh();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function clearInstanceLogs(id, name) {
+  if (!confirm(`¿Limpiar los logs de "${name}"? Esta acción no elimina la instancia.`)) return;
+  try {
+    const res = await fetch(`/api/instances/${id}/logs`, { method: 'DELETE' });
+    if (!res.ok) {
+      const d = await res.json();
+      throw new Error(d.error || 'No se pudieron limpiar los logs');
+    }
+    showToast(`Logs limpiados para "${name}"`, 'info');
+    await refresh();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
 // ── Render instances ────────────────────────────────────
 function renderInstances(list, containerId) {
   const grid = document.getElementById(containerId);
@@ -773,6 +844,8 @@ function instanceCard(inst) {
   let statusHtml = '';
   if (inst.status === 'running') {
     statusHtml = `<span class="status running"><span class="dot"></span> En ejecución</span>`;
+  } else if (inst.status === 'stopped') {
+    statusHtml = `<span class="status stopped"><span class="dot"></span> Apagada</span>`;
   } else if (inst.status === 'provisioning') {
     statusHtml = `<span class="status provisioning"><span class="dot"></span> Provisionando…</span>`;
   } else if (inst.status === 'error') {
@@ -785,7 +858,19 @@ function instanceCard(inst) {
   if (inst.status === 'provisioning') {
     bodyHtml = `<div class="card-loading"><div class="spinner"></div> Preparando máquina virtual y base de datos…</div>`;
   } else if (inst.status === 'error') {
-    bodyHtml = `<div style="color:var(--red-text);font-size:11px;padding:8px 0">${escHtml(inst.error_msg || 'Error desconocido')}</div>`;
+    bodyHtml = `
+      <div style="color:var(--red-text);font-size:11px;padding:8px 0">${escHtml(inst.error_msg || 'Error desconocido')}</div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;flex-wrap:wrap">
+        <button class="btn-secondary" onclick="clearInstanceLogs('${inst.id}','${escHtml(inst.db_name)}')">
+          <i class="ti ti-broom"></i> Limpiar logs
+        </button>
+        <button class="btn-primary" onclick="retryInstance('${inst.id}','${escHtml(inst.db_name)}')">
+          <i class="ti ti-refresh"></i> Reintentar
+        </button>
+        <button class="btn-danger" onclick="confirmDelete('${inst.id}','${escHtml(inst.db_name)}')">
+          <i class="ti ti-trash"></i> Eliminar
+        </button>
+      </div>`;
   } else {
     bodyHtml = `
       <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
@@ -869,6 +954,11 @@ function renderConfig() {
   document.getElementById('cfg-ip').textContent = '192.168.56.x';
   document.getElementById('cfg-mariatpl').textContent = 'nimbus-mariadb-template';
   document.getElementById('cfg-pgtpl').textContent = 'nimbus-pg-template';
+  document.getElementById('cfg-snapshot').textContent = 'base';
+  document.getElementById('cfg-iso').textContent = '~/Downloads/debian-13.4.0-amd64-netinst.iso';
+  document.getElementById('cfg-iso-url').textContent = 'Debian current netinst index';
+  document.getElementById('cfg-template-user').textContent = 'nimbus';
+  document.getElementById('cfg-template-password').textContent = 'nimbus-vm';
   document.getElementById('cfg-sshkey').textContent = '~/.ssh/nimbus_id_rsa';
 }
 
@@ -901,7 +991,12 @@ async function refreshLogs() {
 }
 
 // Poll while there are provisioning instances
+let slowPollTimer = null;
 function startPolling() {
+  if (slowPollTimer) {
+    clearInterval(slowPollTimer);
+    slowPollTimer = null;
+  }
   if (pollTimer) return;
   pollTimer = setInterval(async () => {
     await refresh();
@@ -909,8 +1004,22 @@ function startPolling() {
     if (!hasProvisioning) {
       clearInterval(pollTimer);
       pollTimer = null;
+      startSlowPolling();
     }
   }, 3000);
+}
+
+function startSlowPolling() {
+  if (pollTimer || slowPollTimer) return;
+  slowPollTimer = setInterval(async () => {
+    await refresh();
+    const hasProvisioning = instances.some(i => i.status === 'provisioning');
+    if (hasProvisioning) {
+      clearInterval(slowPollTimer);
+      slowPollTimer = null;
+      startPolling();
+    }
+  }, 10000); // 10 seconds
 }
 
 // ── Utilities ───────────────────────────────────────────
@@ -939,12 +1048,16 @@ function showToast(msg, type = 'info') {
 }
 
 // ── Init ─────────────────────────────────────────────────
-refresh();
-// Check if there's any provisioning on load
-setTimeout(async () => {
-  const hasProvisioning = instances.some(i => i.status === 'provisioning');
-  if (hasProvisioning) startPolling();
-}, 500);
+refresh().then(() => {
+  setTimeout(() => {
+    const hasProvisioning = instances.some(i => i.status === 'provisioning');
+    if (hasProvisioning) {
+      startPolling();
+    } else {
+      startSlowPolling();
+    }
+  }, 500);
+});
 </script>
 </body>
 </html>

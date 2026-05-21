@@ -1,0 +1,41 @@
+{
+  "instances": [
+    {
+      "id": "8a4beee4-7b4f-4beb-81af-5c8efea9be71",
+      "db_name": "pruebamaria",
+      "username": "admin",
+      "password": "150e57a7c3d3",
+      "engine": "mariadb",
+      "status": "error",
+      "host": "",
+      "port": 0,
+      "vm_name": "nimbus-mariadb-8a4beee4",
+      "created_at": "2026-05-21T18:35:03.9765737Z",
+      "access_cmd": "",
+      "error_msg": "preparar plantilla: no se pudo determinar el disco de la plantilla nimbus-mariadb-template"
+    }
+  ],
+  "logs": [
+    {
+      "id": 1,
+      "level": "INFO",
+      "message": "Solicitud de creación de la base de datos pruebamaria con usuario admin en MariaDB",
+      "instance_id": "8a4beee4-7b4f-4beb-81af-5c8efea9be71",
+      "created_at": "2026-05-21T18:35:03.9781758Z"
+    },
+    {
+      "id": 2,
+      "level": "INFO",
+      "message": "La plantilla nimbus-mariadb-template existe pero no tiene snapshot base; NimbusDBaaS lo creará",
+      "created_at": "2026-05-21T18:35:04.0416208Z"
+    },
+    {
+      "id": 3,
+      "level": "ERROR",
+      "message": "Error provisionando pruebamaria: preparar plantilla: no se pudo determinar el disco de la plantilla nimbus-mariadb-template",
+      "instance_id": "8a4beee4-7b4f-4beb-81af-5c8efea9be71",
+      "created_at": "2026-05-21T18:35:04.1333218Z"
+    }
+  ],
+  "log_seq": 3
+}

@@ -5,6 +5,7 @@ package store
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -43,12 +44,31 @@ func (s *Store) load() error {
 	if err != nil {
 		return err
 	}
-	return json.Unmarshal(b, &s.d)
+	if err := json.Unmarshal(b, &s.d); err != nil {
+		return err
+	}
+	filtered := s.d.Instances[:0]
+	changed := false
+	for _, inst := range s.d.Instances {
+		if inst.Status == models.StatusDeleted {
+			changed = true
+			continue
+		}
+		filtered = append(filtered, inst)
+	}
+	s.d.Instances = filtered
+	if changed {
+		return s.save()
+	}
+	return nil
 }
 
 func (s *Store) save() error {
 	b, err := json.MarshalIndent(s.d, "", "  ")
 	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(s.path), 0755); err != nil {
 		return err
 	}
 	return os.WriteFile(s.path, b, 0644)
@@ -105,11 +125,25 @@ func (s *Store) DeleteInstance(id string) error {
 	defer s.mu.Unlock()
 	for i, v := range s.d.Instances {
 		if v.ID == id {
-			s.d.Instances[i].Status = models.StatusDeleted
+			s.d.Instances = append(s.d.Instances[:i], s.d.Instances[i+1:]...)
 			return s.save()
 		}
 	}
 	return nil
+}
+
+func (s *Store) DeleteLogsByInstance(instanceID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	filtered := s.d.Logs[:0]
+	for _, entry := range s.d.Logs {
+		if entry.InstanceID == instanceID {
+			continue
+		}
+		filtered = append(filtered, entry)
+	}
+	s.d.Logs = filtered
+	return s.save()
 }
 
 // ── Log methods ───────────────────────────────────────────────────────────

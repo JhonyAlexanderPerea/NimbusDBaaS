@@ -80,7 +80,7 @@ El sistema permite a los usuarios:
 | **Provisioner** | Go + VBoxManage CLI | Clona VMs, asigna red, lanza SSH |
 | **Store** | SQLite (`go-sqlite3`) | Persiste instancias y logs |
 | **Frontend** | HTML + JS (Vanilla) | SPA fiel al mockup, polling automático |
-| **VMs plantilla** | Debian 12 + MariaDB/PostgreSQL | Base inmutable para cada motor |
+| **VMs plantilla** | Debian 12 + MariaDB/PostgreSQL | Base inmutable por motor, preparada con snapshot `base` y disco `multiattach` |
 
 ---
 
@@ -184,8 +184,10 @@ chmod +x scripts/setup-templates.sh
 El script:
 1. Genera el par de llaves SSH en `~/.ssh/nimbus_id_rsa`.
 2. Crea el adaptador host-only `vboxnet0`.
-3. Crea dos VMs base (una para MariaDB, otra para PostgreSQL).
-4. Muestra los pasos manuales de instalación de Debian y los motores.
+3. Crea dos VMs base distintas, una por motor.
+4. Deja indicado el snapshot `base` y el disco principal en modo `multiattach`.
+
+La aplicación también puede bootstrappear automáticamente la plantilla faltante si no existe en VirtualBox, descargando la ISO de Debian y dejando lista la VM base antes de clonar.
 
 ### Pasos manuales en cada VM
 
@@ -239,6 +241,11 @@ VBoxManage controlvm nimbus-pg-template poweroff
 | `NIMBUS_SIMULATED` | `1` | `1` = simulado, `0` = real |
 | `NIMBUS_MARIADB_TEMPLATE` | `nimbus-mariadb-template` | Nombre de la VM plantilla MariaDB |
 | `NIMBUS_PG_TEMPLATE` | `nimbus-pg-template` | Nombre de la VM plantilla PostgreSQL |
+| `NIMBUS_TEMPLATE_SNAPSHOT` | `base` | Snapshot usado como origen del linked clone |
+| `NIMBUS_TEMPLATE_ISO` | `~/Downloads/debian-13.4.0-amd64-netinst.iso` | Ruta local de la ISO Debian descargada automáticamente |
+| `NIMBUS_TEMPLATE_ISO_URL` | `https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/` | URL base o ISO directa usada para descargar Debian si falta |
+| `NIMBUS_TEMPLATE_USER` | `nimbus` | Usuario creado durante la instalación unattended |
+| `NIMBUS_TEMPLATE_PASSWORD` | `nimbus-vm` | Contraseña usada para el bootstrap de la plantilla |
 | `NIMBUS_HOST_ONLY_NET` | `vboxnet0` | Nombre del adaptador host-only |
 | `NIMBUS_SSH_KEY` | `~/.ssh/nimbus_id_rsa` | Ruta a la llave privada SSH |
 | `NIMBUS_BASE_IP` | `192.168.56` | Prefijo de red para IPs simuladas |
@@ -310,7 +317,8 @@ POST /api/instances
         └─ Lanza goroutine de provisionamiento
                 │
                 ├─ Log: "Solicitud de creación…"
-                ├─ [Real] Clonar VM (VBoxManage clonevm --options link)
+                ├─ [Real] Verificar o bootstrappear plantilla base
+                ├─ [Real] Clonar VM (VBoxManage clonevm --snapshot base --options link)
                 ├─ [Real] Configurar red host-only
                 ├─ [Real] Iniciar VM (VBoxManage startvm --type headless)
                 ├─ [Real] Esperar IP (guestproperty polling)

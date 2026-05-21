@@ -45,7 +45,8 @@ func (r *Router) handleInstances(w http.ResponseWriter, req *http.Request) {
 	case http.MethodGet:
 		instances, err := r.store.ListInstances()
 		if err != nil {
-			jsonError(w, err.Error(), 500); return
+			jsonError(w, err.Error(), 500)
+			return
 		}
 		if instances == nil {
 			instances = []*models.Instance{}
@@ -65,7 +66,8 @@ func (r *Router) createInstance(w http.ResponseWriter, req *http.Request) {
 	ct := req.Header.Get("Content-Type")
 	if strings.HasPrefix(ct, "multipart/form-data") {
 		if err := req.ParseMultipartForm(10 << 20); err != nil {
-			jsonError(w, "parse form: "+err.Error(), 400); return
+			jsonError(w, "parse form: "+err.Error(), 400)
+			return
 		}
 		cr.DBName = req.FormValue("db_name")
 		cr.Username = req.FormValue("username")
@@ -77,33 +79,38 @@ func (r *Router) createInstance(w http.ResponseWriter, req *http.Request) {
 		}
 	} else {
 		if err := json.NewDecoder(req.Body).Decode(&cr); err != nil {
-			jsonError(w, "invalid JSON: "+err.Error(), 400); return
+			jsonError(w, "invalid JSON: "+err.Error(), 400)
+			return
 		}
 		sqlContent = cr.SQLContent
 	}
 
 	if cr.DBName == "" || cr.Username == "" {
-		jsonError(w, "db_name y username son requeridos", 400); return
+		jsonError(w, "db_name y username son requeridos", 400)
+		return
 	}
 	if cr.Engine != models.EngineMariaDB && cr.Engine != models.EnginePostgreSQL {
-		jsonError(w, "engine debe ser 'mariadb' o 'postgresql'", 400); return
+		jsonError(w, "engine debe ser 'mariadb' o 'postgresql'", 400)
+		return
 	}
 
 	cr.DBName = sanitize(cr.DBName)
 	cr.Username = sanitize(cr.Username)
 
 	inst := &models.Instance{
-		ID:        newUUID(),
-		DBName:    cr.DBName,
-		Username:  cr.Username,
-		Password:  genPassword(),
-		Engine:    cr.Engine,
-		Status:    models.StatusProvisioning,
-		CreatedAt: time.Now().UTC(),
+		ID:         newUUID(),
+		DBName:     cr.DBName,
+		Username:   cr.Username,
+		Password:   genPassword(),
+		Engine:     cr.Engine,
+		Status:     models.StatusProvisioning,
+		CreatedAt:  time.Now().UTC(),
+		SQLContent: sqlContent,
 	}
 
 	if err := r.store.CreateInstance(inst); err != nil {
-		jsonError(w, "store: "+err.Error(), 500); return
+		jsonError(w, "store: "+err.Error(), 500)
+		return
 	}
 
 	r.prov.Provision(inst, sqlContent)
@@ -113,21 +120,33 @@ func (r *Router) createInstance(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) handleInstance(w http.ResponseWriter, req *http.Request) {
-	id := strings.TrimPrefix(req.URL.Path, "/api/instances/")
-	if id == "" {
-		jsonError(w, "missing id", 400); return
+	suffix := strings.TrimPrefix(req.URL.Path, "/api/instances/")
+	if suffix == "" {
+		jsonError(w, "missing id", 400)
+		return
 	}
+	if strings.HasSuffix(suffix, "/logs") {
+		r.clearInstanceLogs(w, req, strings.TrimSuffix(suffix, "/logs"))
+		return
+	}
+	if strings.HasSuffix(suffix, "/retry") {
+		r.retryInstance(w, req, strings.TrimSuffix(suffix, "/retry"))
+		return
+	}
+	id := suffix
 	switch req.Method {
 	case http.MethodGet:
 		inst, err := r.store.GetInstance(id)
 		if err != nil {
-			jsonError(w, fmt.Sprintf("instance %s not found", id), 404); return
+			jsonError(w, fmt.Sprintf("instance %s not found", id), 404)
+			return
 		}
 		jsonOK(w, inst)
 	case http.MethodDelete:
 		inst, err := r.store.GetInstance(id)
 		if err != nil {
-			jsonError(w, "not found", 404); return
+			jsonError(w, "not found", 404)
+			return
 		}
 		go func() {
 			if err := r.prov.Destroy(inst); err != nil {
@@ -140,10 +159,59 @@ func (r *Router) handleInstance(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+func (r *Router) retryInstance(w http.ResponseWriter, req *http.Request, id string) {
+	if req.Method != http.MethodPost {
+		jsonError(w, "method not allowed", 405)
+		return
+	}
+	inst, err := r.store.GetInstance(id)
+	if err != nil {
+		jsonError(w, "not found", 404)
+		return
+	}
+	if inst.Status != models.StatusError {
+		jsonError(w, "solo se puede reintentar una instancia en estado error", 409)
+		return
+	}
+	if err := r.prov.CleanupVM(inst); err != nil {
+		_ = r.store.AddLog("WARN", fmt.Sprintf("No se pudo limpiar la VM %s antes de reintentar: %v", inst.VMName, err), inst.ID)
+	}
+	inst.Status = models.StatusProvisioning
+	inst.ErrorMsg = ""
+	inst.Host = ""
+	inst.Port = 0
+	inst.AccessCmd = ""
+	if err := r.store.UpdateInstance(inst); err != nil {
+		jsonError(w, "store: "+err.Error(), 500)
+		return
+	}
+	_ = r.store.AddLog("INFO", fmt.Sprintf("Reintentando provisión de %s", inst.DBName), inst.ID)
+	r.prov.Provision(inst, inst.SQLContent)
+	jsonOK(w, map[string]string{"status": "retrying"})
+}
+
+func (r *Router) clearInstanceLogs(w http.ResponseWriter, req *http.Request, id string) {
+	if req.Method != http.MethodDelete {
+		jsonError(w, "method not allowed", 405)
+		return
+	}
+	if _, err := r.store.GetInstance(id); err != nil {
+		jsonError(w, "not found", 404)
+		return
+	}
+	if err := r.store.DeleteLogsByInstance(id); err != nil {
+		jsonError(w, "store: "+err.Error(), 500)
+		return
+	}
+	_ = r.store.AddLog("OK", fmt.Sprintf("Logs limpiados para la instancia %s", id), id)
+	jsonOK(w, map[string]string{"status": "logs-cleared"})
+}
+
 func (r *Router) handleLogs(w http.ResponseWriter, req *http.Request) {
 	logs, err := r.store.ListLogs(200)
 	if err != nil {
-		jsonError(w, err.Error(), 500); return
+		jsonError(w, err.Error(), 500)
+		return
 	}
 	if logs == nil {
 		logs = []*models.LogEntry{}
