@@ -16,8 +16,8 @@
 7. [Configuración de plantillas VirtualBox (modo real)](#configuración-de-plantillas-virtualbox-modo-real)
 8. [Variables de entorno](#variables-de-entorno)
 9. [API REST](#api-rest)
-10. [Flujo de provisionamiento](#flujo-de-provisionamiento)
-11. [Diseño de la interfaz (mockup)](#diseño-de-la-interfaz)
+10. [Flujo de aprovisionamiento](#flujo-de-aprovisionamiento)
+11. [Interfaz de usuario](#interfaz-de-usuario)
 
 ---
 
@@ -29,8 +29,9 @@ El sistema permite a los usuarios:
 
 - Crear instancias de bases de datos MariaDB o PostgreSQL con un solo formulario web.
 - Especificar el nombre de la base de datos, el usuario administrador y (opcionalmente) un archivo `.sql` de inicialización.
-- Ver las instancias activas con sus credenciales de acceso (host, puerto, usuario, contraseña, cadena de conexión para DBeaver).
-- Eliminar instancias y su VM subyacente.
+- Ver las instancias activas con sus credenciales de acceso (host, puerto, usuario, contraseña, cadena de conexión).
+- Detener, reanudar y eliminar instancias y su VM subyacente.
+- Reintentar instancias que fallaron durante el aprovisionamiento.
 - Consultar un registro completo de actividad del servicio.
 
 ---
@@ -53,21 +54,22 @@ El sistema permite a los usuarios:
 │   │  │         Provisioner               │   │    │
 │   │  │  • Clona VMs desde plantillas     │   │    │
 │   │  │  • Llama a VBoxManage CLI         │   │    │
-│   │  │  • Aprovisionamiento async via SSH │   │    │
+│   │  │  • Aprovisionamiento via SSH      │   │    │
+│   │  │  • Health checks periódicos       │   │    │
 │   │  └────┬──────────────────────────────┘   │    │
 │   │       │                                   │    │
 │   │  ┌────▼──────────┐                        │    │
-│   │  │  SQLite Store │ (data/nimbus.db)       │    │
+│   │  │  JSON Store   │ (data/nimbus.db)       │    │
 │   │  └───────────────┘                        │    │
 │   └───────────────────────────────────────────┘    │
 │                                                     │
 │   ┌──────────────┐    ┌──────────────┐             │
 │   │  VM: MariaDB │    │  VM: PgSQL   │  ...        │
 │   │  (clonada)   │    │  (clonada)   │             │
-│   │  192.168.56.X│    │  192.168.56.Y│             │
+│   │  192.168.10.X│    │  192.168.10.Y│             │
 │   └──────────────┘    └──────────────┘             │
 │           ▲                   ▲                     │
-│           └───── vboxnet0 ────┘                     │
+│           └─── host-only ─────┘                     │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -77,9 +79,9 @@ El sistema permite a los usuarios:
 |---|---|---|
 | **Servidor HTTP** | Go `net/http` | Sirve la SPA y expone la API REST |
 | **API REST** | Go | Endpoints para CRUD de instancias y logs |
-| **Provisioner** | Go + VBoxManage CLI | Clona VMs, asigna red, lanza SSH |
-| **Store** | SQLite (`go-sqlite3`) | Persiste instancias y logs |
-| **Frontend** | HTML + JS (Vanilla) | SPA fiel al mockup, polling automático |
+| **Provisioner** | Go + VBoxManage CLI + `golang.org/x/crypto/ssh` | Clona VMs, asigna red, ejecuta SSH, health checks |
+| **Store** | JSON (`encoding/json`) | Persiste instancias y logs en archivo plano (sin CGO) |
+| **Frontend** | HTML + JS (Vanilla) | SPA con polling automático, drag & drop, animaciones |
 | **VMs plantilla** | Debian 12 + MariaDB/PostgreSQL | Base inmutable por motor, preparada con snapshot `base` para linked clones |
 
 ---
@@ -95,17 +97,17 @@ nimbusDBaaS/
 │   ├── api/
 │   │   └── router.go            # Handlers HTTP y enrutamiento
 │   ├── models/
-│   │   └── models.go            # Structs: Instance, LogEntry, etc.
+│   │   └── models.go            # Structs: Instance, LogEntry, Engine, Status
 │   ├── provisioner/
-│   │   └── provisioner.go       # Lógica de VirtualBox y SSH
+│   │   └── provisioner.go       # Lógica de VirtualBox, SSH y health checks
 │   └── store/
-│       └── store.go             # Capa SQLite (instancias + logs)
+│       └── store.go             # Persistencia en JSON (thread-safe)
 ├── web/
 │   └── templates/
 │       └── index.html           # SPA completa (HTML + CSS + JS)
 ├── scripts/
 │   └── setup-templates.sh       # Script de configuración de VMs plantilla
-├── data/                        # Creado en runtime (nimbus.db)
+├── data/                        # Creado en runtime (nimbus.db — JSON)
 ├── go.mod
 ├── go.sum
 ├── Makefile
@@ -118,13 +120,7 @@ nimbusDBaaS/
 
 ### Siempre necesarios
 - **Go 1.21+** — [descargar](https://go.dev/dl/)
-- **GCC / build-essential** — requerido por `go-sqlite3` (CGO)
-  ```bash
-  # Ubuntu/Debian
-  sudo apt install -y build-essential
-  # macOS
-  xcode-select --install
-  ```
+- Dependencia: `golang.org/x/crypto` (se descarga automáticamente con `go mod tidy`)
 
 ### Solo para modo real (VirtualBox)
 - **Oracle VirtualBox 7.x** — [descargar](https://www.virtualbox.org/)
@@ -162,7 +158,7 @@ make run
 |---|---|---|
 | VirtualBox requerido | No | Sí |
 | VMs creadas | No | Sí (linked clone) |
-| IPs asignadas | Aleatorias (192.168.56.X) | Reales (DHCP host-only) |
+| IPs asignadas | Aleatorias (192.168.10.X) | Reales (DHCP host-only) |
 | SSH ejecutado | No | Sí |
 | Base de datos real | No | Sí |
 | Duración aprovisionamiento | ~6 segundos | ~1-2 minutos |
@@ -186,8 +182,6 @@ El script:
 2. Crea el adaptador host-only `vboxnet0`.
 3. Crea dos VMs base distintas, una por motor.
 4. Deja indicado el snapshot `base` para clonar con `clonevm --snapshot base --options link`.
-
-La aplicación también puede bootstrappear automáticamente la plantilla faltante si no existe en VirtualBox, descargando la ISO de Debian y dejando lista la VM base antes de clonar.
 
 ### Pasos manuales en cada VM
 
@@ -242,13 +236,14 @@ VBoxManage controlvm nimbus-pg-template poweroff
 | `NIMBUS_MARIADB_TEMPLATE` | `nimbus-mariadb-template` | Nombre de la VM plantilla MariaDB |
 | `NIMBUS_PG_TEMPLATE` | `nimbus-pg-template` | Nombre de la VM plantilla PostgreSQL |
 | `NIMBUS_TEMPLATE_SNAPSHOT` | `base` | Snapshot usado como origen del linked clone |
-| `NIMBUS_TEMPLATE_ISO` | `~/Downloads/debian-13.4.0-amd64-netinst.iso` | Ruta local de la ISO Debian descargada automáticamente |
-| `NIMBUS_TEMPLATE_ISO_URL` | `https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/` | URL base o ISO directa usada para descargar Debian si falta |
+| `NIMBUS_TEMPLATE_ISO` | `~/Downloads/debian-13.4.0-amd64-netinst.iso` | Ruta local de la ISO Debian |
+| `NIMBUS_TEMPLATE_ISO_URL` | `https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/` | URL de descarga de ISO Debian |
 | `NIMBUS_TEMPLATE_USER` | `root` | Usuario SSH usado por el provisioner |
-| `NIMBUS_HOST_ONLY_NET` | `vboxnet0` | Nombre del adaptador host-only |
-| `NIMBUS_SSH_KEY` | `~/.ssh/nimbus_id_rsa` | Ruta a la llave privada SSH |
-| `NIMBUS_BASE_IP` | `192.168.56` | Prefijo de red para IPs simuladas |
+| `NIMBUS_HOST_ONLY_NET` | `VirtualBox Host-Only Ethernet Adapter` | Nombre del adaptador host-only |
+| `NIMBUS_SSH_KEY` | `~/.ssh/id_rsa` | Ruta a la llave privada SSH |
+| `NIMBUS_BASE_IP` | `192.168.10` | Prefijo de red para IPs |
 | `VBOXMANAGE` | `VBoxManage` | Ruta al ejecutable VBoxManage |
+| `PORT` | `8080` | Puerto donde escucha el servidor HTTP |
 
 ---
 
@@ -267,17 +262,17 @@ Lista todas las instancias activas (excluye eliminadas).
     "password": "s0qf1M4abc",
     "engine": "mariadb",
     "status": "running",
-    "host": "192.168.56.42",
+    "host": "192.168.10.42",
     "port": 3306,
     "vm_name": "nimbus-mariadb-a1b2c3d4",
-    "access_cmd": "mariadb -h 192.168.56.42 -u carlos -ps0qf1M4abc Clientes",
+    "access_cmd": "mariadb -h 192.168.10.42 -u carlos -ps0qf1M4abc Clientes",
     "created_at": "2026-05-15T10:05:00Z"
   }
 ]
 ```
 
 ### `POST /api/instances`
-Crea una nueva instancia (responde 202 Accepted, el aprovisionamiento es async).
+Crea una nueva instancia (responde 202 Accepted, aprovisionamiento async).
 
 **Body JSON:**
 ```json
@@ -289,7 +284,7 @@ Crea una nueva instancia (responde 202 Accepted, el aprovisionamiento es async).
 }
 ```
 
-**O multipart/form-data** con campos `db_name`, `username`, `engine` y archivo `sql_file`.
+O **multipart/form-data** con campos `db_name`, `username`, `engine` y archivo `sql_file`.
 
 ### `GET /api/instances/:id`
 Obtiene una instancia por ID (útil para polling de estado).
@@ -297,8 +292,23 @@ Obtiene una instancia por ID (útil para polling de estado).
 ### `DELETE /api/instances/:id`
 Elimina una instancia (apaga y borra la VM en background).
 
+### `POST /api/instances/:id/stop`
+Detiene la VM de una instancia (ACPI poweroff con force-fallback).
+
+### `POST /api/instances/:id/resume`
+Reanuda una instancia detenida.
+
+### `POST /api/instances/:id/retry`
+Reintenta el aprovisionamiento de una instancia en estado `error`. Limpia la VM fallida y vuelve a ejecutar el flujo completo.
+
+### `DELETE /api/instances/:id/logs`
+Elimina los registros de log asociados a una instancia.
+
 ### `GET /api/logs`
 Devuelve todos los registros de actividad (hasta 200, orden cronológico).
+
+### `GET /api/config`
+Expone la configuración activa del provisioner (plantillas, red, SSH, ISO).
 
 ---
 
@@ -310,51 +320,57 @@ Usuario llena formulario
         ▼
 POST /api/instances
         │
-        ├─ Valida campos
+        ├─ Valida campos (incluye validación de identificadores contra palabras reservadas)
         ├─ Genera UUID, contraseña aleatoria
-        ├─ Persiste en SQLite (status: provisioning)
+        ├─ Persiste en JSON Store (status: provisioning)
         └─ Lanza goroutine de aprovisionamiento
                 │
                 ├─ Log: "Solicitud de creación…"
-                ├─ [Real] Verificar o bootstrappear plantilla base
+                ├─ Valida nombre de BD y usuario contra regex
+                ├─ Asigna nombre de VM
+                ├─ [Real] Reserva IP disponible (rango .20-.254, TTL 5 min)
+                ├─ [Real] Verificar o bootstrappear plantilla base + snapshot
                 ├─ [Real] Clonar VM (VBoxManage clonevm --snapshot base --options link)
-                ├─ [Real] Configurar red host-only
                 ├─ [Real] Iniciar VM (VBoxManage startvm --type headless)
-                ├─ [Real] Esperar IP (guestproperty polling)
-                ├─ Actualizar Store con host/puerto
-                ├─ Log: "Creación de MV exitosa"
-                ├─ [Real] SSH: CREATE DATABASE …
-                ├─ [Real] SSH: CREATE USER …
-                ├─ [Real] SSH: GRANT ALL PRIVILEGES …
-                ├─ [Real] SSH: ejecutar archivo .sql (si se proporcionó)
-                ├─ Actualizar Store (status: running)
+                ├─ [Real] Asignar IP vía SSH a la plantilla y esperar conectividad
+                ├─ [Real] SSH: CREATE DATABASE, CREATE USER, GRANT ALL PRIVILEGES
+                ├─ [Real] SSH: ejecutar archivo .sql (si se proporcionó, sanitizado)
+                ├─ Actualizar Store (status: running, host, puerto, access_cmd)
                 └─ Log: "Instancia lista — host asignado X.X.X.X"
 ```
 
-La UI hace polling cada 3 segundos mientras haya instancias en estado `provisioning`, actualizando las tarjetas automáticamente hasta que cambian a `running`.
+### Health checks
+
+El provisioner ejecuta health checks cada 10 segundos sobre las VMs activas. Si una VM no responde 3 veces consecutivas, se marca como `stopped`. Si vuelve a aparecer, se reanuda automáticamente.
+
+### Reintento
+
+Si una instancia falla durante el aprovisionamiento (status `error`), se puede reintentar vía `POST /api/instances/:id/retry`. El sistema limpia la VM fallida y ejecuta el flujo completo desde cero.
 
 ---
 
-## Diseño de la interfaz
+## Interfaz de usuario
 
-La interfaz fue implementada siguiendo fielmente el mockup aprobado:
+La interfaz es una SPA (Single Page Application) construida con HTML, CSS y JavaScript vanilla.
 
 | Sección | Descripción |
 |---|---|
 | **Topbar** | Logo NimbusDBaaS, indicador de entorno, avatar |
-| **Sidebar** | Navegación: Bases de datos, Instancias, Registros, Configuración |
-| **Crear BD** | Formulario con nombre, usuario, selector de motor (MariaDB / PostgreSQL), upload de .sql |
-| **Instancias activas** | Cards con badge del motor, estado animado, credenciales de acceso con botones de copia, botón eliminar |
+| **Sidebar** | Navegación: Crear BD, Instancias, Registros |
+| **Crear BD** | Formulario con nombre, usuario, selector de motor (MariaDB / PostgreSQL), upload de `.sql` con drag & drop |
+| **Instancias activas** | Cards con badge del motor, estado animado, credenciales de acceso con botones de copia, acciones (detener/reanudar/reintentar/eliminar) |
 | **Registro de actividad** | Logs con timestamp, nivel (INFO/OK/ERROR) y mensaje |
-| **Configuración** | Variables de entorno activas y estado del modo (simulado/real) |
 
-Características adicionales respecto al mockup estático:
-- **Polling automático** de instancias mientras se aprovisionan
-- **Toasts** de notificación para acciones
-- **Modal de confirmación** para eliminar instancias
+### Características
+
+- **Polling adaptativo**: cada 3 segundos mientras hay instancias en `provisioning`, cada 10 segundos cuando todas están estables
+- **Toasts** de notificación para acciones (creación, eliminación, errores)
+- **Modal de confirmación** para eliminación de instancias
+- **Modal de acción** para confirmar detener/reanudar/reintentar
 - **Botones de copiar** para host, contraseña y cadena de acceso
-- **Animaciones** de estado (spinner en aprovisionamiento, pulso en punto de estado)
+- **Animaciones**: spinner en aprovisionamiento, pulso en estado, barrido en acciones, aparición de tarjetas
 - **Drag & drop** para el archivo SQL
+- **Renderizado por diff**: solo actualiza las cards que cambiaron (minimiza manipulación del DOM)
 
 ---
 
