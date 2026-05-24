@@ -17,8 +17,6 @@
 8. [Variables de entorno](#variables-de-entorno)
 9. [API REST](#api-rest)
 10. [Flujo de provisionamiento](#flujo-de-provisionamiento)
-10. [Flujo de aprovisionamiento](#flujo-de-aprovisionamiento)
-10. [Flujo de aprovisionamiento](#flujo-de-aprovisionamiento)
 11. [Diseño de la interfaz (mockup)](#diseño-de-la-interfaz)
 
 ---
