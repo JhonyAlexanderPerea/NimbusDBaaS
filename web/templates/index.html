@@ -2,8 +2,9 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=1280" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>NimbusDBaaS</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='4' y='4' width='56' height='56' rx='12' fill='%232563EB'/%3E%3Cpath d='M22 38h20a8 8 0 0 0 0-16 12 12 0 0 0-23-3 9 9 0 0 0 3 19z' fill='white'/%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -51,6 +52,8 @@
     font-size: 13px;
     line-height: 1.5;
     min-height: 100vh;
+    height: 100vh;
+    overflow: hidden;
   }
 
   /* ── TOP BAR ── */
@@ -71,6 +74,7 @@
     background: var(--blue-600);
     border-radius: var(--radius-md);
     display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
   }
   .logo-mark i { color: #fff; font-size: 18px; }
   .logo-text { font-size: 15px; font-weight: 600; color: var(--text-primary); letter-spacing: -0.3px; }
@@ -87,17 +91,25 @@
     background: var(--blue-100); color: var(--blue-800);
     font-size: 11px; font-weight: 600;
     display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
   }
 
   /* ── LAYOUT ── */
-  .layout { display: flex; min-height: calc(100vh - 52px); }
+  .layout {
+    display: flex;
+    min-height: calc(100vh - 52px);
+    height: calc(100vh - 52px);
+    overflow: hidden;
+  }
 
   /* ── SIDEBAR ── */
   .sidebar {
-    width: 220px; flex-shrink: 0;
+    width: 220px;
+    flex-shrink: 0;
     background: var(--surface);
     border-right: 1px solid var(--border);
     padding: 16px 0;
+    overflow-y: auto;
   }
   .sidebar-section {
     font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
@@ -123,7 +135,16 @@
   }
 
   /* ── CONTENT ── */
-  .content { flex: 1; padding: 24px; display: flex; flex-direction: column; gap: 18px; }
+  .content {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    overflow-y: auto;
+  }
   .view { display: none; flex-direction: column; gap: 18px; }
   .view.active { display: flex; }
 
@@ -149,11 +170,7 @@
   .form-group { display: flex; flex-direction: column; gap: 5px; }
   .form-group.full { grid-column: 1 / -1; }
   .form-label { font-size: 11px; font-weight: 500; color: var(--text-secondary); letter-spacing: 0.02em; }
-  .form-help {
-    font-size: 10px;
-    color: var(--text-muted);
-    line-height: 1.4;
-  }
+  .form-help { font-size: 10px; color: var(--text-muted); line-height: 1.4; }
   .form-input {
     height: 36px; padding: 0 12px;
     border: 1px solid var(--border-md);
@@ -163,13 +180,14 @@
     background: #FAFBFD;
     outline: none;
     transition: border-color 0.15s, box-shadow 0.15s;
+    width: 100%;
   }
   .form-input::placeholder { color: var(--text-muted); }
   .form-input:focus { border-color: var(--blue-600); box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
   .form-input.error { border-color: var(--red-600); }
 
   /* engine selector */
-  .engine-row { display: flex; gap: 10px; }
+  .engine-row { display: flex; gap: 10px; flex-wrap: wrap; }
   .engine-opt {
     display: flex; align-items: center; gap: 8px;
     padding: 7px 16px;
@@ -192,9 +210,9 @@
   .engine-opt.selected .engine-dot { border-color: var(--blue-600); background: var(--blue-600); }
 
   /* file upload */
-  .file-row { display: flex; align-items: center; gap: 10px; }
+  .file-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .file-box {
-    flex: 1; height: 36px; padding: 0 12px;
+    flex: 1; min-width: 160px; height: 36px; padding: 0 12px;
     border: 1.5px dashed var(--border-md);
     border-radius: var(--radius-sm);
     display: flex; align-items: center; gap: 7px;
@@ -203,7 +221,6 @@
     transition: border-color 0.15s;
   }
   .file-box:hover { border-color: var(--blue-600); color: var(--blue-600); }
-  .file-box i { font-size: 15px; }
   .file-box.has-file { color: var(--green-600); border-color: var(--green-600); background: var(--green-50); }
   #sql-file-input { display: none; }
 
@@ -218,6 +235,7 @@
     cursor: pointer; white-space: nowrap;
     box-shadow: 0 1px 3px rgba(37,99,235,0.25);
     transition: background 0.15s;
+    flex-shrink: 0;
   }
   .btn-primary:hover { background: var(--blue-700); }
   .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
@@ -232,70 +250,149 @@
     font-size: 12px; font-weight: 500;
     cursor: pointer;
     transition: background 0.15s;
+    white-space: nowrap;
   }
   .btn-danger:hover { background: #FEE2E2; }
   .btn-danger i { font-size: 14px; }
   .btn-danger:disabled,
-  .btn-secondary:disabled {
-    opacity: 0.65;
-    cursor: not-allowed;
+  .btn-secondary:disabled { opacity: 0.65; cursor: not-allowed; }
+  .btn-loading { pointer-events: none; }
+  .instance-card-wrapper.action-busy .instance-card {
+    opacity: 0.92;
+    position: relative;
+    overflow: hidden;
   }
-  .btn-loading {
+  .instance-card-wrapper.action-busy .instance-card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(120deg, transparent 0%, rgba(255,255,255,0.45) 40%, transparent 80%);
+    transform: translateX(-120%);
+    animation: cardBusySweep 0.95s linear infinite;
     pointer-events: none;
+  }
+  .instance-card-wrapper.action-busy .card-actions button {
+    transform: translateY(0);
+    transition: opacity 0.15s ease;
+  }
+  .instance-card-wrapper.action-busy .card-actions button.btn-loading {
+    opacity: 1;
+  }
+  @keyframes cardBusySweep {
+    to { transform: translateX(120%); }
+  }
+
+  .instance-card-wrapper.action-done-on .instance-card,
+  .instance-card-wrapper.action-done-off .instance-card {
+    animation: cardActionDone 520ms ease-out;
+  }
+  .instance-card-wrapper.action-done-on .instance-card { box-shadow: 0 0 0 2px rgba(22,163,74,0.22), 0 8px 24px rgba(22,163,74,0.12); }
+  .instance-card-wrapper.action-done-off .instance-card { box-shadow: 0 0 0 2px rgba(217,119,6,0.22), 0 8px 24px rgba(217,119,6,0.12); }
+  .instance-card-wrapper.action-done-on .status {
+    animation: statusBlinkOn 560ms ease-out;
+    box-shadow: 0 0 0 2px rgba(22,163,74,0.18);
+  }
+  .instance-card-wrapper.action-done-off .status {
+    animation: statusBlinkOff 560ms ease-out;
+    box-shadow: 0 0 0 2px rgba(217,119,6,0.18);
+  }
+  @keyframes statusBlinkOn {
+    0% { transform: scale(0.96); filter: saturate(1.1); }
+    45% { transform: scale(1.05); filter: saturate(1.25); }
+    100% { transform: scale(1); filter: saturate(1); }
+  }
+  @keyframes statusBlinkOff {
+    0% { transform: scale(0.96); filter: saturate(1.1); }
+    45% { transform: scale(1.05); filter: saturate(1.25); }
+    100% { transform: scale(1); filter: saturate(1); }
+  }
+  @keyframes cardActionDone {
+    0% { transform: scale(0.995); }
+    35% { transform: scale(1.01); }
+    100% { transform: scale(1); }
   }
 
   /* toast */
-  .toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 100; display: flex; flex-direction: column; gap: 8px; }
+  .toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 1000; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
   .toast {
     background: var(--surface); border: 1px solid var(--border);
     border-radius: var(--radius-md); padding: 12px 16px;
     box-shadow: var(--shadow-md); font-size: 12px;
     display: flex; align-items: center; gap: 10px;
     min-width: 260px; max-width: 380px;
-    animation: slideIn 0.2s ease;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 0.18s ease, transform 0.18s ease;
+    pointer-events: auto;
   }
+  .toast.show { opacity: 1; transform: translateY(0); }
   .toast.success { border-left: 3px solid var(--green-600); }
   .toast.error   { border-left: 3px solid var(--red-600); }
   .toast.info    { border-left: 3px solid var(--blue-600); }
   @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 
-  /* ── INSTANCES ── */
-  .instances-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  /* ── INSTANCES GRID ── */
+  .instances-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 14px;
+    padding: 4px 0;
+  }
+
+  /* ── INSTANCE CARD ── */
+  /* removed fixed height — card grows with content */
+  .instance-card-wrapper {
+    display: flex;
+  }
   .instance-card {
+    width: 100%;
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
     padding: 14px 16px;
     background: #FAFBFD;
-    transition: box-shadow 0.15s;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
   }
-  .instance-card:hover { box-shadow: var(--shadow-md); }
-  .ic-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 10px; }
-  .ic-title-row { display: flex; align-items: center; gap: 8px; }
+
+  @keyframes cardAppear { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  .instance-card-wrapper.entering { animation: cardAppear 220ms cubic-bezier(.2,.8,.2,1); }
+  .instance-card { transition: transform 160ms cubic-bezier(.2,.8,.2,1), box-shadow 160ms cubic-bezier(.2,.8,.2,1); }
+  .instance-card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(14,30,37,0.10); }
+
+  .ic-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+  .ic-title-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .ic-title-info { min-width: 0; }
   .engine-badge {
     font-size: 10px; font-weight: 600; padding: 2px 8px;
     border-radius: 99px; letter-spacing: 0.04em;
+    white-space: nowrap; flex-shrink: 0;
   }
   .badge-maria { background: var(--maria-bg); color: var(--maria-text); border: 1px solid #A7F3D0; }
   .badge-pg    { background: var(--pg-bg);    color: var(--pg-text);    border: 1px solid var(--blue-100); }
-  .ic-name  { font-size: 14px; font-weight: 600; color: var(--text-primary); }
-  .ic-user  { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+  .ic-name  { font-size: 14px; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ic-user  { font-size: 11px; color: var(--text-muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
   .status {
     display: inline-flex; align-items: center; gap: 5px;
     font-size: 11px; font-weight: 500;
     padding: 3px 8px; border-radius: 99px;
+    white-space: nowrap; flex-shrink: 0;
+    transition: background-color 0.25s ease, color 0.25s ease, transform 0.25s ease, box-shadow 0.25s ease;
   }
   .status.running  { color: var(--green-600); background: var(--green-100); }
   .status.stopped  { color: var(--text-secondary); background: var(--border-md); }
   .status.provisioning { color: var(--yellow-600); background: var(--yellow-100); }
   .status.error    { color: var(--red-text); background: var(--red-50); }
-  .dot { width: 6px; height: 6px; border-radius: 50%; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
   .running .dot { background: var(--green-600); }
   .stopped .dot { background: var(--text-secondary); }
   .provisioning .dot { background: var(--yellow-600); animation: pulse 1.2s infinite; }
   .error .dot { background: var(--red-600); }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
 
-  .ic-footer { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px; }
+  .ic-body { border-top: 1px solid var(--border); padding-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+
   .info-block {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -306,25 +403,35 @@
     line-height: 1.9;
   }
   .info-row { display: flex; align-items: center; gap: 6px; }
-  .info-key { color: var(--text-muted); width: 76px; flex-shrink: 0; }
-  .info-val { color: var(--text-primary); font-weight: 500; flex: 1; word-break: break-all; }
+  .info-key { color: var(--text-muted); width: 80px; flex-shrink: 0; }
+  .info-val { color: var(--text-primary); font-weight: 500; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; }
   .copy-btn {
     margin-left: auto; background: none; border: none;
     cursor: pointer; color: var(--text-muted); padding: 2px 4px;
     font-size: 13px; line-height: 1; border-radius: 4px;
-    transition: color 0.15s;
+    transition: color 0.15s; flex-shrink: 0;
   }
   .copy-btn:hover { color: var(--blue-600); }
 
+  /* card action row */
+  .card-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
   .empty-state {
     text-align: center; padding: 40px 20px; color: var(--text-muted);
+    grid-column: 1 / -1;
   }
   .empty-state i { font-size: 32px; display: block; margin-bottom: 8px; }
 
   /* provisioning overlay */
   .card-loading {
     display: flex; align-items: center; gap: 10px;
-    padding: 12px; color: var(--yellow-600);
+    padding: 10px 0; color: var(--yellow-600);
     font-size: 12px;
   }
   .spinner {
@@ -333,6 +440,7 @@
     border-top-color: var(--yellow-600);
     border-radius: 50%;
     animation: spin 0.7s linear infinite;
+    flex-shrink: 0;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -358,7 +466,7 @@
     font-size: 11px; color: var(--text-muted);
     white-space: nowrap; flex-shrink: 0;
   }
-  .log-msg { color: var(--text-secondary); }
+  .log-msg { color: var(--text-secondary); min-width: 0; word-break: break-word; }
   .log-msg b { color: var(--text-primary); font-weight: 500; }
   .log-tag {
     display: inline-block; font-size: 10px; font-weight: 600;
@@ -370,20 +478,6 @@
   .tag-error   { background: var(--red-50);   color: var(--red-text); }
   .tag-warn    { background: var(--yellow-100); color: var(--yellow-600); }
   .log-empty { color: var(--text-muted); font-size: 12px; padding: 12px 0; }
-
-  /* ── CONFIG VIEW ── */
-  .config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-  .config-section { margin-bottom: 18px; }
-  .config-section h3 { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 10px; }
-  .config-row {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 12px;
-  }
-  .config-row:last-child { border-bottom: none; }
-  .config-key { color: var(--text-muted); }
-  .config-val { font-family: 'DM Mono', monospace; color: var(--text-primary); font-size: 11px; }
-  .badge-sim { background: var(--yellow-100); color: var(--yellow-600); border: 1px solid #FDE68A; }
-  .badge-real { background: var(--green-100); color: var(--green-600); border: 1px solid #BBF7D0; }
 
   /* modal */
   .modal-overlay {
@@ -403,9 +497,61 @@
   .modal p { color: var(--text-secondary); font-size: 13px; margin-bottom: 20px; }
   .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
   .btn-secondary {
+    display: inline-flex; align-items: center; gap: 5px;
     padding: 7px 16px; background: var(--bg); border: 1px solid var(--border-md);
-    border-radius: var(--radius-sm); font-size: 13px; cursor: pointer;
-    font-family: 'DM Sans', sans-serif;
+    border-radius: var(--radius-sm); font-size: 12px; cursor: pointer;
+    font-family: 'DM Sans', sans-serif; white-space: nowrap;
+    transition: background 0.15s;
+  }
+  .btn-secondary:hover { background: var(--border); }
+  .btn-secondary i { font-size: 14px; }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 768px) {
+    body { height: auto; overflow: auto; }
+    .layout { flex-direction: column; }
+    .layout { height: auto; min-height: calc(100vh - 52px); overflow: visible; }
+    .sidebar {
+      width: 100%;
+      display: flex;
+      flex-direction: row;
+      gap: 4px;
+      overflow-x: auto;
+      padding: 8px 12px;
+      border-right: none;
+      border-bottom: 1px solid var(--border);
+      -webkit-overflow-scrolling: touch;
+      overflow-y: visible;
+    }
+    .sidebar-section { display: none; }
+    .sidebar-item {
+      flex: 0 0 auto;
+      border-left: none;
+      border-bottom: 2px solid transparent;
+      border-radius: var(--radius-sm);
+      padding: 7px 12px;
+      font-size: 12px;
+    }
+    .sidebar-item.active {
+      border-left-color: transparent;
+      border-bottom-color: var(--blue-600);
+    }
+    .content { padding: 14px; gap: 14px; overflow-y: visible; }
+    .panel { padding: 14px 14px; }
+    .form-grid { grid-template-columns: 1fr; }
+    .form-group.full { grid-column: 1; }
+    .instances-grid { grid-template-columns: 1fr; }
+    .file-row { flex-direction: column; align-items: stretch; }
+    .file-box { min-width: unset; }
+    .btn-primary { justify-content: center; }
+    .toast-container { left: 12px; right: 12px; bottom: 12px; }
+    .toast { min-width: unset; max-width: unset; width: 100%; }
+    .topbar { padding: 0 14px; }
+    .pill { display: none; }
+  }
+
+  @media (min-width: 769px) and (max-width: 1100px) {
+    .instances-grid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
   }
 </style>
 </head>
@@ -424,13 +570,11 @@
 <div class="layout">
 
   <!-- SIDEBAR -->
-  <nav class="sidebar">
+  <nav class="sidebar" aria-label="Navegación principal">
     <p class="sidebar-section">General</p>
-    <div class="sidebar-item active" data-view="databases"><i class="ti ti-database"></i> Bases de datos</div>
+    <div class="sidebar-item active" data-view="databases"><i class="ti ti-database"></i> Crear</div>
     <div class="sidebar-item" data-view="instances"><i class="ti ti-server"></i> Instancias</div>
-    <p class="sidebar-section">Sistema</p>
     <div class="sidebar-item" data-view="logs"><i class="ti ti-file-text"></i> Registros</div>
-    <div class="sidebar-item" data-view="config"><i class="ti ti-settings"></i> Configuración</div>
   </nav>
 
   <!-- MAIN CONTENT -->
@@ -449,12 +593,12 @@
           <div class="form-group">
             <label class="form-label">Nombre de la base de datos</label>
             <input class="form-input" id="inp-dbname" type="text" placeholder="ej. clientes_ventas" spellcheck="false" autocomplete="off" />
-            <div class="form-help" id="help-dbname">Solo letras, números y _. Reservados: admin, system, postgres, template0, template1, mysql, root, information_schema, performance_schema.</div>
+            <div class="form-help">Solo letras, números y _. Reservados: admin, system, postgres, template0, template1, mysql, root, information_schema, performance_schema.</div>
           </div>
           <div class="form-group">
             <label class="form-label">Usuario administrador</label>
             <input class="form-input" id="inp-username" type="text" placeholder="ej. carlos_admin" spellcheck="false" autocomplete="off" />
-            <div class="form-help" id="help-username">Solo letras, números y _. Reservados: admin, system, postgres, template0, template1, mysql, root, information_schema, performance_schema.</div>
+            <div class="form-help">Solo letras, números y _. Reservados: admin, system, postgres, template0, template1, mysql, root, information_schema, performance_schema.</div>
           </div>
           <div class="form-group full">
             <label class="form-label">Motor de base de datos</label>
@@ -490,9 +634,10 @@
         <div class="panel-header">
           <i class="ti ti-server-2"></i>
           <h2>Instancias activas</h2>
+          <button class="btn-secondary" id="btn-see-all-instances" style="margin-left:auto"><i class="ti ti-list"></i> Ver todas</button>
         </div>
         <div class="instances-grid" id="instances-grid">
-          <div class="empty-state" style="grid-column:1/-1">
+          <div class="empty-state">
             <i class="ti ti-database-off"></i>
             No hay instancias activas aún
           </div>
@@ -506,7 +651,7 @@
             <i class="ti ti-activity"></i>
             <h2>Registro de actividad</h2>
           </div>
-          <button class="btn-secondary" id="btn-see-all-logs" style="font-size:11px;padding:4px 10px">Ver todo</button>
+          <button class="btn-secondary" id="btn-see-all-logs"><i class="ti ti-list"></i> Ver todo</button>
         </div>
         <div id="log-list-home"></div>
       </div>
@@ -521,7 +666,7 @@
           <h2>Todas las instancias</h2>
         </div>
         <div class="instances-grid" id="instances-grid-full">
-          <div class="empty-state" style="grid-column:1/-1">
+          <div class="empty-state">
             <i class="ti ti-database-off"></i>
             No hay instancias
           </div>
@@ -537,101 +682,9 @@
             <i class="ti ti-activity"></i>
             <h2>Registro de actividad completo</h2>
           </div>
-          <button class="btn-secondary" id="btn-refresh-logs" style="font-size:11px;padding:4px 10px"><i class="ti ti-refresh" style="font-size:12px"></i> Actualizar</button>
+          <button class="btn-secondary" id="btn-refresh-logs"><i class="ti ti-refresh" style="font-size:12px"></i> Actualizar</button>
         </div>
         <div id="log-list-full"></div>
-      </div>
-    </div>
-
-    <!-- ── VIEW: CONFIGURACIÓN ── -->
-    <div class="view" id="view-config">
-      <div class="panel">
-        <div class="panel-header">
-          <i class="ti ti-settings"></i>
-          <h2>Configuración del servicio</h2>
-        </div>
-        <div class="config-section">
-          <h3>Entorno de ejecución</h3>
-          <div class="config-row">
-            <span class="config-key">Modo</span>
-            <span class="config-val" id="cfg-mode">—</span>
-          </div>
-          <div class="config-row">
-            <span class="config-key">VBoxManage</span>
-            <span class="config-val" id="cfg-vbox">—</span>
-          </div>
-          <div class="config-row">
-            <span class="config-key">Red Host-Only</span>
-            <span class="config-val" id="cfg-net">—</span>
-          </div>
-          <div class="config-row">
-            <span class="config-key">Base IP</span>
-            <span class="config-val" id="cfg-ip">—</span>
-          </div>
-          <div class="config-row">
-            <span class="config-key">Plantilla MariaDB</span>
-            <span class="config-val" id="cfg-mariatpl">—</span>
-          </div>
-          <div class="config-row">
-            <span class="config-key">Plantilla PostgreSQL</span>
-            <span class="config-val" id="cfg-pgtpl">—</span>
-          </div>
-          <div class="config-row">
-            <span class="config-key">Snapshot base</span>
-            <span class="config-val" id="cfg-snapshot">—</span>
-          </div>
-          <div class="config-row">
-            <span class="config-key">ISO Debian</span>
-            <span class="config-val" id="cfg-iso">—</span>
-          </div>
-          <div class="config-row">
-            <span class="config-key">URL ISO Debian</span>
-            <span class="config-val" id="cfg-iso-url">—</span>
-          </div>
-          <div class="config-row">
-            <span class="config-key">Clave SSH</span>
-            <span class="config-val" id="cfg-sshkey">—</span>
-          </div>
-        </div>
-        <div class="config-section">
-          <h3>Variables de entorno disponibles</h3>
-          <div class="config-row">
-            <span class="config-key">NIMBUS_MARIADB_TEMPLATE</span>
-            <span class="config-val">Nombre de la VM plantilla MariaDB</span>
-          </div>
-          <div class="config-row">
-            <span class="config-key">NIMBUS_PG_TEMPLATE</span>
-            <span class="config-val">Nombre de la VM plantilla PostgreSQL</span>
-          </div>
-          <div class="config-row">
-            <span class="config-key">NIMBUS_TEMPLATE_SNAPSHOT</span>
-            <span class="config-val">Snapshot base usado para los linked clones</span>
-          </div>
-          <div class="config-row">
-            <span class="config-key">NIMBUS_HOST_ONLY_NET</span>
-            <span class="config-val">Adaptador host-only de VirtualBox</span>
-          </div>
-          <div class="config-row">
-            <span class="config-key">NIMBUS_SSH_KEY</span>
-            <span class="config-val">Ruta a la llave privada SSH</span>
-          </div>
-          <div class="config-row">
-            <span class="config-key">NIMBUS_BASE_IP</span>
-            <span class="config-val">Prefijo IP (ej. 192.168.10)</span>
-          </div>
-          <div class="config-row">
-            <span class="config-key">NIMBUS_TEMPLATE_ISO</span>
-            <span class="config-val">Ruta local de la ISO Debian</span>
-          </div>
-          <div class="config-row">
-            <span class="config-key">NIMBUS_TEMPLATE_ISO_URL</span>
-            <span class="config-val">URL remota de la ISO Debian</span>
-          </div>
-          <div class="config-row">
-            <span class="config-key">VBOXMANAGE</span>
-            <span class="config-val">Ruta al ejecutable VBoxManage</span>
-          </div>
-        </div>
       </div>
     </div>
 
@@ -653,7 +706,94 @@
   </div>
 </div>
 
+<!-- ACTION MODAL -->
+<div class="modal-overlay" id="action-modal">
+  <div class="modal">
+    <h3 id="action-modal-title">Confirmar acción</h3>
+
+    <p id="action-modal-message">
+      ¿Deseas continuar?
+    </p>
+
+    <div class="modal-actions">
+      <button class="btn-secondary" id="btn-action-cancel">
+        Cancelar
+      </button>
+
+      <button class="btn-danger" id="btn-action-confirm">
+        <i class="ti ti-check"></i>
+        Confirmar
+      </button>
+    </div>
+  </div>
+</div>
+
 <script>
+
+// ── Generic action modal ───────────────────────────────
+const actionModal = document.getElementById('action-modal');
+const actionModalTitle = document.getElementById('action-modal-title');
+const actionModalMessage = document.getElementById('action-modal-message');
+
+const btnActionCancel = document.getElementById('btn-action-cancel');
+const btnActionConfirm = document.getElementById('btn-action-confirm');
+
+let actionModalCallback = null;
+
+btnActionCancel.addEventListener('click', closeActionModal);
+
+btnActionConfirm.addEventListener('click', async () => {
+  if (!actionModalCallback) return;
+
+  btnActionConfirm.disabled = true;
+  btnActionCancel.disabled = true;
+
+  const originalHtml = btnActionConfirm.innerHTML;
+
+  btnActionConfirm.innerHTML =
+    '<i class="ti ti-loader-2 ti-spin"></i> Procesando...';
+
+  try {
+    await actionModalCallback();
+    closeActionModal();
+  } finally {
+    btnActionConfirm.disabled = false;
+    btnActionCancel.disabled = false;
+    btnActionConfirm.innerHTML = originalHtml;
+  }
+});
+
+actionModal.addEventListener('click', e => {
+  if (e.target === actionModal) closeActionModal();
+});
+
+function openActionModal({
+  title,
+  message,
+  confirmText = 'Confirmar',
+  confirmIcon = 'ti ti-check',
+  confirmClass = 'btn-danger',
+  onConfirm
+}) {
+  actionModalTitle.textContent = title;
+  actionModalMessage.textContent = message;
+
+  btnActionConfirm.className = confirmClass;
+
+  btnActionConfirm.innerHTML = `
+    <i class="${confirmIcon}"></i>
+    ${confirmText}
+  `;
+
+  actionModalCallback = onConfirm;
+
+  actionModal.classList.add('open');
+}
+
+function closeActionModal() {
+  actionModal.classList.remove('open');
+  actionModalCallback = null;
+}
 // ═══════════════════════════════════════════════════════
 //  NimbusDBaaS – Frontend
 // ═══════════════════════════════════════════════════════
@@ -663,6 +803,7 @@ let instances = [];
 let logs = [];
 let selectedEngine = 'mariadb';
 let sqlFileContent = '';
+let sqlFileLoading = false;
 let pollTimer = null;
 let pendingDeleteId = null;
 let deleteInProgress = false;
@@ -681,7 +822,6 @@ document.querySelectorAll('.sidebar-item').forEach(item => {
     const viewId = 'view-' + item.dataset.view;
     document.getElementById(viewId).classList.add('active');
     if (item.dataset.view === 'logs') refreshLogs();
-    if (item.dataset.view === 'config') renderConfig();
   });
 });
 
@@ -691,6 +831,13 @@ document.getElementById('btn-see-all-logs').addEventListener('click', () => {
   document.querySelector('[data-view="logs"]').classList.add('active');
   document.getElementById('view-logs').classList.add('active');
   refreshLogs();
+});
+
+document.getElementById('btn-see-all-instances').addEventListener('click', () => {
+  document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelector('[data-view="instances"]').classList.add('active');
+  document.getElementById('view-instances').classList.add('active');
 });
 
 document.getElementById('btn-refresh-logs').addEventListener('click', refreshLogs);
@@ -723,12 +870,21 @@ fileInput.addEventListener('change', () => {
 });
 
 function handleFile(file) {
+  sqlFileLoading = true;
+  fileLabel.textContent = file.name;
+  fileBox.classList.add('has-file');
+  fileBox.querySelector('i').className = 'ti ti-file';
   const reader = new FileReader();
   reader.onload = ev => {
     sqlFileContent = ev.target.result;
     fileLabel.textContent = file.name;
     fileBox.classList.add('has-file');
     fileBox.querySelector('i').className = 'ti ti-file-check';
+    sqlFileLoading = false;
+  };
+  reader.onerror = () => {
+    sqlFileLoading = false;
+    showToast('Error leyendo archivo .sql', 'error');
   };
   reader.readAsText(file);
 }
@@ -784,6 +940,15 @@ document.getElementById('btn-create').addEventListener('click', async () => {
   btn.innerHTML = '<span class="spinner" style="border-color:rgba(255,255,255,0.3);border-top-color:#fff"></span> Creando…';
 
   try {
+    if (sqlFileLoading) {
+      showToast('Procesando archivo .sql, espera un momento', 'info');
+      const start = Date.now();
+      while (sqlFileLoading && Date.now() - start < 5000) await new Promise(r=>setTimeout(r,200));
+      if (sqlFileLoading) {
+        showToast('El archivo .sql sigue cargando. Intenta de nuevo en unos segundos', 'error');
+        return;
+      }
+    }
     const payload = { db_name: dbName, username, engine: selectedEngine, sql_content: sqlFileContent };
     const res = await fetch('/api/instances', {
       method: 'POST',
@@ -793,7 +958,7 @@ document.getElementById('btn-create').addEventListener('click', async () => {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Error desconocido');
 
-    showToast(`Provisionando "${dbName}" — recibirás los datos de acceso en breve`, 'info');
+    showToast(`Aprovisionando "${dbName}" — recibirás los datos de acceso en breve`, 'info');
     document.getElementById('inp-dbname').value = '';
     document.getElementById('inp-username').value = '';
     sqlFileContent = '';
@@ -867,68 +1032,181 @@ deleteModal.addEventListener('click', e => { if (e.target === deleteModal) close
 async function retryInstance(id, name) {
   try {
     const res = await fetch(`/api/instances/${id}/retry`, { method: 'POST' });
-    if (!res.ok) {
-      const d = await res.json();
-      throw new Error(d.error || 'No se pudo reintentar');
-    }
+    if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'No se pudo reintentar'); }
     showToast(`Reintentando instancia "${name}"`, 'info');
     await refresh();
-  } catch (err) {
-    showToast(err.message, 'error');
-  }
+  } catch (err) { showToast(err.message, 'error'); }
+}
+
+let pendingStop = null;
+
+async function stopInstance(id, name, btn) {
+  pendingStop = { id, name, btn };
+
+  openActionModal({
+    title: '¿Apagar instancia?',
+    message: `La instancia "${name}" será apagada temporalmente. Podrás volver a encenderla después.`,
+    confirmText: 'Apagar',
+    confirmIcon: 'ti ti-power',
+    confirmClass: 'btn-secondary',
+    onConfirm: async () => {
+      const restore = withInstanceActionFeedback(btn, 'Apagando...');
+
+      showToast(`Apagando instancia "${name}"...`, 'info');
+
+      try {
+        const res = await fetch(`/api/instances/${id}/stop`, {
+          method: 'POST'
+        });
+
+        if (!res.ok) {
+          const d = await res.json();
+          throw new Error(d.error || 'No se pudo apagar');
+        }
+
+        showToast(`Instancia "${name}" apagada`, 'success');
+
+        await refresh();
+
+        pulseInstanceActionResult(id, 'off');
+      } catch (err) {
+        showToast(err.message, 'error');
+      } finally {
+        restore();
+      }
+    }
+  });
+}
+
+async function powerOnInstance(id, name, btn) {
+  const restore = withInstanceActionFeedback(btn, 'Encendiendo...');
+  showToast(`Encendiendo instancia "${name}"...`, 'info');
+  try {
+    const res = await fetch(`/api/instances/${id}/resume`, { method: 'POST' });
+    if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'No se pudo encender'); }
+    showToast(`Instancia "${name}" encendida`, 'success');
+    await refresh();
+    pulseInstanceActionResult(id, 'on');
+  } catch (err) { showToast(err.message, 'error'); }
+  finally { restore(); }
+}
+
+function withInstanceActionFeedback(btn, loadingLabel) {
+  if (!btn) return () => {};
+  const wrapper = btn.closest('.instance-card-wrapper');
+  if (!wrapper) return () => {};
+
+  const actionButtons = Array.from(wrapper.querySelectorAll('.card-actions button'));
+  const snapshot = actionButtons.map(el => ({ el, html: el.innerHTML, disabled: el.disabled }));
+
+  wrapper.classList.add('action-busy');
+  actionButtons.forEach(el => {
+    el.disabled = true;
+    el.classList.add('btn-loading');
+  });
+  btn.innerHTML = `<i class="ti ti-loader-2 ti-spin"></i> ${loadingLabel}`;
+
+  return () => {
+    wrapper.classList.remove('action-busy');
+    snapshot.forEach(({ el, html, disabled }) => {
+      el.innerHTML = html;
+      el.disabled = disabled;
+      el.classList.remove('btn-loading');
+    });
+  };
+}
+
+function pulseInstanceActionResult(id, mode) {
+  const targets = document.querySelectorAll(`.instance-card-wrapper[data-id="${id}"]`);
+  const cls = mode === 'on' ? 'action-done-on' : 'action-done-off';
+  targets.forEach(el => {
+    el.classList.remove('action-done-on', 'action-done-off');
+    // reflow to restart animation reliably
+    void el.offsetWidth;
+    el.classList.add(cls);
+    setTimeout(() => el.classList.remove(cls), 650);
+  });
 }
 
 async function clearInstanceLogs(id, name) {
   if (!confirm(`¿Limpiar los logs de "${name}"? Esta acción no elimina la instancia.`)) return;
   try {
     const res = await fetch(`/api/instances/${id}/logs`, { method: 'DELETE' });
-    if (!res.ok) {
-      const d = await res.json();
-      throw new Error(d.error || 'No se pudieron limpiar los logs');
-    }
+    if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'No se pudieron limpiar los logs'); }
     showToast(`Logs limpiados para "${name}"`, 'info');
     await refresh();
-  } catch (err) {
-    showToast(err.message, 'error');
-  }
+  } catch (err) { showToast(err.message, 'error'); }
 }
 
 // ── Render instances ────────────────────────────────────
-function renderInstances(list, containerId) {
+function renderInstances(list, containerId, opts = {}) {
+  const maxItems = typeof opts.maxItems === 'number' ? opts.maxItems : null;
+  const emptyMessage = opts.emptyMessage || 'No hay instancias activas aún';
   const grid = document.getElementById(containerId);
   if (!list || list.length === 0) {
-    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">
-      <i class="ti ti-database-off"></i>No hay instancias activas aún</div>`;
+    grid.innerHTML = `<div class="empty-state">
+      <i class="ti ti-database-off"></i>${emptyMessage}</div>`;
     return;
   }
-  grid.innerHTML = list.map(inst => instanceCard(inst)).join('');
+  const toRender = maxItems ? list.slice(0, maxItems) : list;
+  const existing = new Set();
+  for (const inst of toRender) {
+    existing.add(String(inst.id));
+    const el = grid.querySelector(`[data-id="${inst.id}"]`);
+    const renderKey = getInstanceRenderKey(inst);
+    const html = instanceCard(inst, { entering: !el, renderKey });
+    if (!el) {
+      grid.insertAdjacentHTML('beforeend', html);
+    } else {
+      if (el.dataset.renderKey === renderKey) {
+        el.dataset.status = inst.status;
+        continue;
+      }
+      const prevStatus = el.dataset.status;
+      if (prevStatus === 'provisioning' && inst.status === 'provisioning') {
+        const statusEl = el.querySelector('.status');
+        if (statusEl) statusEl.outerHTML = getStatusHtml(inst.status);
+        el.dataset.status = inst.status;
+        continue;
+      }
+      el.outerHTML = html;
+    }
+  }
+  Array.from(grid.children).forEach(ch => {
+    const did = ch.dataset ? ch.dataset.id : ch.id;
+    if (!existing.has(String(did))) ch.remove();
+  });
+
+  if (maxItems && list.length > maxItems) {
+    const moreId = '__more_instances_hint__';
+    const existingMore = grid.querySelector(`[data-id="${moreId}"]`);
+    const remaining = list.length - maxItems;
+    const hintHtml = `<div class="empty-state" data-id="${moreId}" style="padding:18px 12px">+${remaining} instancia(s) más en la vista Instancias</div>`;
+    if (!existingMore) grid.insertAdjacentHTML('beforeend', hintHtml);
+    else existingMore.outerHTML = hintHtml;
+  } else {
+    const existingMore = grid.querySelector('[data-id="__more_instances_hint__"]');
+    if (existingMore) existingMore.remove();
+  }
 }
 
-function instanceCard(inst) {
+function instanceCard(inst, opts = {}) {
+  const enteringClass = opts.entering ? ' entering' : '';
+  const renderKey = opts.renderKey || getInstanceRenderKey(inst);
   const isMaria = inst.engine === 'mariadb';
   const badgeClass = isMaria ? 'badge-maria' : 'badge-pg';
   const badgeLabel = isMaria ? 'MariaDB' : 'PostgreSQL';
-
-  let statusHtml = '';
-  if (inst.status === 'running') {
-    statusHtml = `<span class="status running"><span class="dot"></span> En ejecución</span>`;
-  } else if (inst.status === 'stopped') {
-    statusHtml = `<span class="status stopped"><span class="dot"></span> Apagada</span>`;
-  } else if (inst.status === 'provisioning') {
-    statusHtml = `<span class="status provisioning"><span class="dot"></span> Provisionando…</span>`;
-  } else if (inst.status === 'error') {
-    statusHtml = `<span class="status error"><span class="dot"></span> Error</span>`;
-  } else {
-    statusHtml = `<span class="status provisioning"><span class="dot"></span> ${inst.status}</span>`;
-  }
+  const statusHtml = getStatusHtml(inst.status);
 
   let bodyHtml = '';
   if (inst.status === 'provisioning') {
-    bodyHtml = `<div class="card-loading"><div class="spinner"></div> Preparando máquina virtual y base de datos…</div>`;
+    bodyHtml = `<div class="ic-body">
+      <div class="card-loading"><div class="spinner"></div> Preparando máquina virtual y base de datos…</div>
+    </div>`;
   } else if (inst.status === 'error') {
-    bodyHtml = `
-      <div style="color:var(--red-text);font-size:11px;padding:8px 0">${escHtml(inst.error_msg || 'Error desconocido')}</div>
-      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;flex-wrap:wrap">
+    bodyHtml = `<div class="ic-body">
+      <div style="color:var(--red-text);font-size:11px;line-height:1.5">${escHtml(inst.error_msg || 'Error desconocido')}</div>
+      <div class="card-actions">
         <button class="btn-secondary" onclick="clearInstanceLogs('${inst.id}','${escHtml(inst.db_name)}')">
           <i class="ti ti-broom"></i> Limpiar logs
         </button>
@@ -938,14 +1216,20 @@ function instanceCard(inst) {
         <button class="btn-danger" onclick="confirmDelete('${inst.id}','${escHtml(inst.db_name)}')">
           <i class="ti ti-trash"></i> Eliminar
         </button>
-      </div>`;
-  } else {
-    bodyHtml = `
-      <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
-        <button class="btn-danger" onclick="confirmDelete('${inst.id}','${escHtml(inst.db_name)}')">
-          <i class="ti ti-trash"></i> Eliminar
-        </button>
       </div>
+    </div>`;
+  } else {
+    const powerActionHtml = inst.status === 'running'
+      ? `<button class="btn-secondary" onclick="stopInstance('${inst.id}','${escHtml(inst.db_name)}', this)">
+          <i class="ti ti-power"></i> Apagar
+        </button>`
+      : inst.status === 'stopped'
+        ? `<button class="btn-primary" onclick="powerOnInstance('${inst.id}','${escHtml(inst.db_name)}', this)">
+          <i class="ti ti-bolt"></i> Encender
+          </button>`
+        : '';
+
+    bodyHtml = `<div class="ic-body">
       <div class="info-block">
         <div class="info-row">
           <span class="info-key">Host</span>
@@ -971,26 +1255,58 @@ function instanceCard(inst) {
         </div>
         <div class="info-row">
           <span class="info-key">Acceso</span>
-          <span class="info-val" style="font-size:10px">${escHtml(inst.access_cmd)}</span>
+          <span class="info-val">${escHtml(inst.access_cmd)}</span>
           <button class="copy-btn" onclick="copyText('${escHtml(inst.access_cmd)}',this)" title="Copiar"><i class="ti ti-copy"></i></button>
         </div>
-      </div>`;
+      </div>
+      <div class="card-actions">
+        ${powerActionHtml}
+        <button class="btn-danger" onclick="confirmDelete('${inst.id}','${escHtml(inst.db_name)}')">
+          <i class="ti ti-trash"></i> Eliminar
+        </button>
+      </div>
+    </div>`;
   }
 
   return `
-  <div class="instance-card">
-    <div class="ic-header">
-      <div>
-        <div class="ic-title-row">
-          <span class="engine-badge ${badgeClass}">${badgeLabel}</span>
-          <span class="ic-name">${escHtml(inst.db_name)}</span>
+    <div class="instance-card-wrapper${enteringClass}" data-id="${inst.id}" data-status="${inst.status}" data-render-key="${escHtml(renderKey)}">
+      <div class="instance-card">
+        <div class="ic-header">
+          <div class="ic-title-row">
+            <span class="engine-badge ${badgeClass}">${badgeLabel}</span>
+            <div class="ic-title-info">
+              <div class="ic-name">${escHtml(inst.db_name)}</div>
+              <div class="ic-user">${escHtml(inst.username)}</div>
+            </div>
+          </div>
+          <div>${statusHtml}</div>
         </div>
-        <div class="ic-user">usuario: ${escHtml(inst.username)}</div>
+        ${bodyHtml}
       </div>
-      ${statusHtml}
-    </div>
-    <div class="ic-footer">${bodyHtml}</div>
-  </div>`;
+    </div>`;
+}
+
+function getInstanceRenderKey(inst) {
+  return [
+    inst.id,
+    inst.status,
+    inst.engine,
+    inst.db_name,
+    inst.username,
+    inst.host,
+    inst.port,
+    inst.password,
+    inst.access_cmd,
+    inst.error_msg
+  ].map(v => String(v || '')).join('|');
+}
+
+function getStatusHtml(status) {
+  if (status === 'running')      return `<span class="status running"><span class="dot"></span> En ejecución</span>`;
+  if (status === 'stopped')      return `<span class="status stopped"><span class="dot"></span> Apagada</span>`;
+  if (status === 'provisioning') return `<span class="status provisioning"><span class="dot"></span> Aprovisionando…</span>`;
+  if (status === 'error')        return `<span class="status error"><span class="dot"></span> Error</span>`;
+  return `<span class="status provisioning"><span class="dot"></span> ${status}</span>`;
 }
 
 // ── Render logs ─────────────────────────────────────────
@@ -1012,30 +1328,7 @@ function renderLogs(list, containerId, limit) {
   }).join('');
 }
 
-// ── Config view — lee del servidor ──────────────────────
-async function renderConfig() {
-  try {
-    const res = await fetch('/api/config');
-    if (!res.ok) throw new Error('No se pudo cargar la configuración');
-    const cfg = await res.json();
-
-    document.getElementById('cfg-mode').innerHTML =
-      `<span class="engine-badge badge-real">REAL / VirtualBox</span>`;
-    document.getElementById('cfg-vbox').textContent     = cfg.vboxmanage          || '—';
-    document.getElementById('cfg-net').textContent      = cfg.host_only_net       || '—';
-    document.getElementById('cfg-ip').textContent       = (cfg.base_ip || '—') + '.20 – ' + (cfg.base_ip || '—') + '.254';
-    document.getElementById('cfg-mariatpl').textContent = cfg.mariadb_template    || '—';
-    document.getElementById('cfg-pgtpl').textContent    = cfg.postgresql_template || '—';
-    document.getElementById('cfg-snapshot').textContent = cfg.template_snapshot   || '—';
-    document.getElementById('cfg-iso').textContent      = cfg.template_iso_path   || '—';
-    document.getElementById('cfg-iso-url').textContent  = cfg.template_iso_url    || '—';
-    document.getElementById('cfg-sshkey').textContent   = cfg.ssh_key_path        || '—';
-  } catch (err) {
-    showToast('Error cargando configuración: ' + err.message, 'error');
-  }
-}
-
-// ── Data refresh ────────────────────────────────────────
+// ── Data refresh ───────────────────────────────────────
 async function refresh() {
   try {
     const [instRes, logRes] = await Promise.all([
@@ -1044,9 +1337,8 @@ async function refresh() {
     ]);
     instances = await instRes.json();
     logs = await logRes.json();
-
-    renderInstances(instances, 'instances-grid');
-    renderInstances(instances, 'instances-grid-full');
+    renderInstances(instances, 'instances-grid', { maxItems: 3, emptyMessage: 'No hay instancias activas aún' });
+    renderInstances(instances, 'instances-grid-full', { emptyMessage: 'No hay instancias' });
     renderLogs(logs, 'log-list-home', 6);
     renderLogs(logs, 'log-list-full', 0);
   } catch(err) {
@@ -1107,14 +1399,30 @@ function copyText(text, btn) {
 }
 
 function showToast(msg, type = 'info') {
-  const container = document.getElementById('toast-container');
+  let container = document.getElementById('toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toast-container';
+    container.className = 'toast-container';
+    document.body.appendChild(container);
+  }
   const icons = { success: 'ti-circle-check', error: 'ti-circle-x', info: 'ti-info-circle' };
   const colors = { success: 'var(--green-600)', error: 'var(--red-600)', info: 'var(--blue-600)' };
   const toast = document.createElement('div');
   toast.className = `toast ${type}`;
   toast.innerHTML = `<i class="ti ${icons[type]}" style="color:${colors[type]};font-size:16px;flex-shrink:0"></i><span>${escHtml(msg)}</span>`;
+
+  // keep at most 4 toasts visible to avoid stacking off-screen
+  while (container.children.length >= 4) {
+    container.removeChild(container.firstElementChild);
+  }
+
   container.appendChild(toast);
-  setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; setTimeout(() => toast.remove(), 300); }, 4000);
+  requestAnimationFrame(() => toast.classList.add('show'));
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 220);
+  }, 3500);
 }
 
 // ── Init ─────────────────────────────────────────────────

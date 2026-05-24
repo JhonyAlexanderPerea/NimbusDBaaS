@@ -17,6 +17,8 @@
 8. [Variables de entorno](#variables-de-entorno)
 9. [API REST](#api-rest)
 10. [Flujo de provisionamiento](#flujo-de-provisionamiento)
+10. [Flujo de aprovisionamiento](#flujo-de-aprovisionamiento)
+10. [Flujo de aprovisionamiento](#flujo-de-aprovisionamiento)
 11. [Diseño de la interfaz (mockup)](#diseño-de-la-interfaz)
 
 ---
@@ -53,7 +55,7 @@ El sistema permite a los usuarios:
 │   │  │         Provisioner               │   │    │
 │   │  │  • Clona VMs desde plantillas     │   │    │
 │   │  │  • Llama a VBoxManage CLI         │   │    │
-│   │  │  • Provisionamiento async via SSH │   │    │
+│   │  │  • Aprovisionamiento async via SSH │   │    │
 │   │  └────┬──────────────────────────────┘   │    │
 │   │       │                                   │    │
 │   │  ┌────▼──────────┐                        │    │
@@ -165,7 +167,7 @@ make run
 | IPs asignadas | Aleatorias (192.168.56.X) | Reales (DHCP host-only) |
 | SSH ejecutado | No | Sí |
 | Base de datos real | No | Sí |
-| Duración provisionamiento | ~6 segundos | ~1-2 minutos |
+| Duración aprovisionamiento | ~6 segundos | ~1-2 minutos |
 | Uso en presentación | Sí | Sí |
 
 En modo simulado el flujo completo es visible en la UI (provisioning → running) con logs detallados, ideal para demostrar el funcionamiento sin infraestructura.
@@ -277,7 +279,7 @@ Lista todas las instancias activas (excluye eliminadas).
 ```
 
 ### `POST /api/instances`
-Crea una nueva instancia (responde 202 Accepted, el provisionamiento es async).
+Crea una nueva instancia (responde 202 Accepted, el aprovisionamiento es async).
 
 **Body JSON:**
 ```json
@@ -302,7 +304,7 @@ Devuelve todos los registros de actividad (hasta 200, orden cronológico).
 
 ---
 
-## Flujo de provisionamiento
+## Flujo de aprovisionamiento
 
 ```
 Usuario llena formulario
@@ -313,7 +315,7 @@ POST /api/instances
         ├─ Valida campos
         ├─ Genera UUID, contraseña aleatoria
         ├─ Persiste en SQLite (status: provisioning)
-        └─ Lanza goroutine de provisionamiento
+        └─ Lanza goroutine de aprovisionamiento
                 │
                 ├─ Log: "Solicitud de creación…"
                 ├─ [Real] Verificar o bootstrappear plantilla base
@@ -349,11 +351,11 @@ La interfaz fue implementada siguiendo fielmente el mockup aprobado:
 | **Configuración** | Variables de entorno activas y estado del modo (simulado/real) |
 
 Características adicionales respecto al mockup estático:
-- **Polling automático** de instancias mientras se provisionan
+- **Polling automático** de instancias mientras se aprovisionan
 - **Toasts** de notificación para acciones
 - **Modal de confirmación** para eliminar instancias
 - **Botones de copiar** para host, contraseña y cadena de acceso
-- **Animaciones** de estado (spinner en provisioning, pulso en punto de estado)
+- **Animaciones** de estado (spinner en aprovisionamiento, pulso en punto de estado)
 - **Drag & drop** para el archivo SQL
 
 ---

@@ -88,6 +88,7 @@ func (r *Router) createInstance(w http.ResponseWriter, req *http.Request) {
 	ct := req.Header.Get("Content-Type")
 	if strings.HasPrefix(ct, "multipart/form-data") {
 		if err := req.ParseMultipartForm(10 << 20); err != nil {
+			_ = r.store.AddLog("ERROR", fmt.Sprintf("parse multipart form error: %v", err), "")
 			jsonError(w, "parse form: "+err.Error(), 400)
 			return
 		}
@@ -101,11 +102,15 @@ func (r *Router) createInstance(w http.ResponseWriter, req *http.Request) {
 		}
 	} else {
 		if err := json.NewDecoder(req.Body).Decode(&cr); err != nil {
+			_ = r.store.AddLog("ERROR", fmt.Sprintf("invalid JSON on createInstance: %v", err), "")
 			jsonError(w, "invalid JSON: "+err.Error(), 400)
 			return
 		}
 		sqlContent = cr.SQLContent
 	}
+
+	// record that we received a create request and whether SQL content was present
+	_ = r.store.AddLog("INFO", fmt.Sprintf("createInstance received multipart=%t sql_present=%t db=%s user=%s", strings.HasPrefix(ct, "multipart/form-data"), sqlContent != "", cr.DBName, cr.Username), "")
 
 	if cr.DBName == "" || cr.Username == "" {
 		jsonError(w, "db_name y username son requeridos", 400)
@@ -123,6 +128,22 @@ func (r *Router) createInstance(w http.ResponseWriter, req *http.Request) {
 	if err := provisioner.ValidateIdentifier(cr.Username, "username", cr.Engine); err != nil {
 		jsonError(w, err.Error(), 400)
 		return
+	}
+
+	// Evita colisiones lógicas y de nombre de VM al repetir motor+db_name
+	instances, err := r.store.ListInstances()
+	if err != nil {
+		jsonError(w, "store: "+err.Error(), 500)
+		return
+	}
+	for _, ex := range instances {
+		if ex == nil {
+			continue
+		}
+		if ex.Engine == cr.Engine && strings.EqualFold(strings.TrimSpace(ex.DBName), strings.TrimSpace(cr.DBName)) {
+			jsonError(w, fmt.Sprintf("ya existe una instancia %s con db_name %q (id=%s)", cr.Engine, cr.DBName, ex.ID), 409)
+			return
+		}
 	}
 
 	inst := &models.Instance{
@@ -155,6 +176,14 @@ func (r *Router) handleInstance(w http.ResponseWriter, req *http.Request) {
 	}
 	if strings.HasSuffix(suffix, "/logs") {
 		r.clearInstanceLogs(w, req, strings.TrimSuffix(suffix, "/logs"))
+		return
+	}
+	if strings.HasSuffix(suffix, "/stop") {
+		r.stopInstance(w, req, strings.TrimSuffix(suffix, "/stop"))
+		return
+	}
+	if strings.HasSuffix(suffix, "/resume") {
+		r.resumeInstance(w, req, strings.TrimSuffix(suffix, "/resume"))
 		return
 	}
 	if strings.HasSuffix(suffix, "/retry") {
@@ -217,9 +246,51 @@ func (r *Router) retryInstance(w http.ResponseWriter, req *http.Request, id stri
 		jsonError(w, "store: "+err.Error(), 500)
 		return
 	}
-	_ = r.store.AddLog("INFO", fmt.Sprintf("Reintentando provisión de %s", inst.DBName), inst.ID)
+	_ = r.store.AddLog("INFO", fmt.Sprintf("Reintentando aprovisionamiento de %s", inst.DBName), inst.ID)
 	r.prov.Provision(inst, inst.SQLContent)
 	jsonOK(w, map[string]string{"status": "retrying"})
+}
+
+func (r *Router) stopInstance(w http.ResponseWriter, req *http.Request, id string) {
+	if req.Method != http.MethodPost {
+		jsonError(w, "method not allowed", 405)
+		return
+	}
+	inst, err := r.store.GetInstance(id)
+	if err != nil {
+		jsonError(w, "not found", 404)
+		return
+	}
+	if inst.Status != models.StatusRunning && inst.Status != models.StatusStopped {
+		jsonError(w, "solo se puede apagar una instancia en estado running o stopped", 409)
+		return
+	}
+	if err := r.prov.StopVM(inst); err != nil {
+		jsonError(w, "no se pudo apagar la instancia: "+err.Error(), 500)
+		return
+	}
+	jsonOK(w, map[string]string{"status": "stopped"})
+}
+
+func (r *Router) resumeInstance(w http.ResponseWriter, req *http.Request, id string) {
+	if req.Method != http.MethodPost {
+		jsonError(w, "method not allowed", 405)
+		return
+	}
+	inst, err := r.store.GetInstance(id)
+	if err != nil {
+		jsonError(w, "not found", 404)
+		return
+	}
+	if inst.Status != models.StatusStopped && inst.Status != models.StatusRunning {
+		jsonError(w, "solo se puede reanudar una instancia en estado stopped o running", 409)
+		return
+	}
+	if err := r.prov.ResumeVM(inst); err != nil {
+		jsonError(w, "no se pudo reanudar la instancia: "+err.Error(), 500)
+		return
+	}
+	jsonOK(w, map[string]string{"status": "running"})
 }
 
 func (r *Router) clearInstanceLogs(w http.ResponseWriter, req *http.Request, id string) {

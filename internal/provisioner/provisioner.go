@@ -105,7 +105,7 @@ func (p *Provisioner) Provision(inst *models.Instance, sqlContent string) {
 			inst.Status = models.StatusError
 			inst.ErrorMsg = err.Error()
 			_ = p.store.UpdateInstance(inst)
-			_ = p.store.AddLog("ERROR", fmt.Sprintf("Error provisionando %s: %v", inst.DBName, err), inst.ID)
+			_ = p.store.AddLog("ERROR", fmt.Sprintf("Error aprovisionando %s: %v", inst.DBName, err), inst.ID)
 		}
 	}()
 }
@@ -128,6 +128,7 @@ func (p *Provisioner) provision(inst *models.Instance, sqlContent string) error 
 }
 
 func (p *Provisioner) realProvision(inst *models.Instance, sqlContent string) (err error) {
+	tStart := time.Now()
 	template, err := p.ensureTemplateReady(inst.Engine)
 	if err != nil {
 		return fmt.Errorf("preparar plantilla: %w", err)
@@ -149,25 +150,34 @@ func (p *Provisioner) realProvision(inst *models.Instance, sqlContent string) (e
 	}()
 
 	_ = p.store.AddLog("INFO", fmt.Sprintf("Clonando plantilla %s → %s (linked clone)", template, inst.VMName), inst.ID)
+	tCloneStart := time.Now()
 	if err = p.vbm("clonevm", template,
 		"--snapshot", p.cfg.TemplateSnapshot,
 		"--options", "link",
 		"--name", inst.VMName,
 		"--register"); err != nil {
+		_ = p.store.AddLog("ERROR", fmt.Sprintf("clonevm failed after %s: %v", time.Since(tCloneStart), err), inst.ID)
 		return fmt.Errorf("clonar VM: %w", err)
 	}
+	_ = p.store.AddLog("OK", fmt.Sprintf("Clone completed in %s", time.Since(tCloneStart)), inst.ID)
 
 	_ = p.store.AddLog("INFO", fmt.Sprintf("Iniciando VM %s", inst.VMName), inst.ID)
+	tStartVM := time.Now()
 	if err = p.vbm("startvm", inst.VMName, "--type", "headless"); err != nil {
+		_ = p.store.AddLog("ERROR", fmt.Sprintf("startvm failed after %s: %v", time.Since(tStartVM), err), inst.ID)
 		return fmt.Errorf("iniciar VM: %w", err)
 	}
+	_ = p.store.AddLog("OK", fmt.Sprintf("VM started in %s", time.Since(tStartVM)), inst.ID)
 
 	// Asigna IP fija y espera SSH. La plantilla Debian debe usar networking clásico
 	// vía /etc/network/interfaces; netplan o NetworkManager requieren adaptación.
+	tIPStart := time.Now()
 	ip, err := p.assignAndWaitForIP(inst, reservedIP)
 	if err != nil {
+		_ = p.store.AddLog("ERROR", fmt.Sprintf("assignAndWaitForIP failed after %s: %v", time.Since(tIPStart), err), inst.ID)
 		return fmt.Errorf("asignar IP: %w", err)
 	}
+	_ = p.store.AddLog("OK", fmt.Sprintf("IP assigned in %s", time.Since(tIPStart)), inst.ID)
 	inst.Host = ip
 	inst.Port = defaultPort(inst.Engine)
 	inst.AccessCmd = accessCmd(inst)
@@ -177,15 +187,19 @@ func (p *Provisioner) realProvision(inst *models.Instance, sqlContent string) (e
 	_ = p.store.UpdateInstance(inst)
 
 	_ = p.store.AddLog("INFO", fmt.Sprintf("Conectando por SSH a %s", ip), inst.ID)
+	tSSHStart := time.Now()
 	if err = p.sshProvision(inst, sqlContent); err != nil {
-		return fmt.Errorf("provisionar DB: %w", err)
+		_ = p.store.AddLog("ERROR", fmt.Sprintf("sshProvision failed after %s: %v", time.Since(tSSHStart), err), inst.ID)
+		return fmt.Errorf("aprovisionar DB: %w", err)
 	}
+	_ = p.store.AddLog("OK", fmt.Sprintf("SSH provisioning completed in %s", time.Since(tSSHStart)), inst.ID)
 
 	inst.Status = models.StatusRunning
 	if err = p.store.UpdateInstance(inst); err != nil {
 		return fmt.Errorf("actualizar instancia: %w", err)
 	}
-	_ = p.store.AddLog("OK", fmt.Sprintf("Instancia %s lista — host asignado %s", inst.DBName, inst.Host), inst.ID)
+	total := time.Since(tStart)
+	_ = p.store.AddLog("OK", fmt.Sprintf("Instancia %s lista — host asignado %s (total: %s)", inst.DBName, inst.Host, total), inst.ID)
 	return nil
 }
 
@@ -210,13 +224,43 @@ func (p *Provisioner) assignAndWaitForIP(inst *models.Instance, newIP string) (s
 	_ = p.store.AddLog("OK", fmt.Sprintf("SSH disponible en %s", templateIP), inst.ID)
 
 	// Cambiar solo la línea address de la interfaz host-only y reiniciar networking sin bloquear la sesión
-	changeIPCmd := fmt.Sprintf(
-		`sed -i -E 's/^([[:space:]]*address )[0-9.]+$/\1%s/' /etc/network/interfaces && nohup sh -c 'systemctl restart networking >/tmp/nimbus-networking.log 2>&1' >/dev/null 2>&1 < /dev/null &`,
-		newIP,
-	)
-	_ = p.store.AddLog("INFO", fmt.Sprintf("Reconfigurando IP: %s → %s", templateIP, newIP), inst.ID)
-	if err := p.runSSH(templateIP, changeIPCmd); err != nil {
-		return "", fmt.Errorf("cambiar IP en VM: %w", err)
+	// Use ip(8) to replace the address on the interface currently holding the template IP.
+	// This avoids restarting the networking service (which can be slow inside the guest).
+	// Persist the IP across reboots by installing a small script and a systemd unit
+	// while also applying the IP immediately with `ip addr replace`.
+	changeIPCmd := fmt.Sprintf(`ifname=$(ip -o -4 addr show | awk '/%s\./ {print $2; exit}'); \
+if [ -z "$ifname" ]; then echo "no-iface"; exit 1; fi; \
+ip addr replace %s/24 dev "$ifname"; \
+ip neigh flush dev "$ifname" || true; \
+# persist on reboot: write helper script and systemd unit
+cat > /usr/local/bin/nimbus-set-ip.sh <<'NIMBUS'
+#!/bin/sh
+ifname=$(ip -o -4 addr show | awk '/%s\./ {print $2; exit}')
+if [ -z "$ifname" ]; then exit 0; fi
+ip addr replace %s/24 dev "$ifname"
+ip neigh flush dev "$ifname" || true
+NIMBUS
+chmod +x /usr/local/bin/nimbus-set-ip.sh
+cat > /etc/systemd/system/nimbus-set-ip.service <<'UNIT'
+[Unit]
+Description=Set Nimbus static IP on boot
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/nimbus-set-ip.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl daemon-reload || true
+systemctl enable nimbus-set-ip.service || true
+echo 'ip-applied'`, p.cfg.BaseIP, newIP, p.cfg.BaseIP, newIP)
+	_ = p.store.AddLog("INFO", fmt.Sprintf("Reconfigurando IP (apply+persist unit) %s → %s", templateIP, newIP), inst.ID)
+	outErr := p.runSSH(templateIP, changeIPCmd)
+	if outErr != nil {
+		return "", fmt.Errorf("cambiar IP en VM: %w", outErr)
 	}
 
 	// Esperar SSH en la nueva IP
@@ -395,8 +439,14 @@ func (p *Provisioner) sshProvision(inst *models.Instance, sqlContent string) err
 	if inst.Engine == models.EngineMariaDB {
 		cmds = []string{
 			fmt.Sprintf(
-				"mariadb -u root <<'SQL'\nCREATE DATABASE IF NOT EXISTS `%s`;\nCREATE USER IF NOT EXISTS '%s'@'%%' IDENTIFIED BY '%s';\nGRANT ALL PRIVILEGES ON `%s`.* TO '%s'@'%%';\nFLUSH PRIVILEGES;\nSQL",
-				inst.DBName, inst.Username, inst.Password, inst.DBName, inst.Username,
+				"mariadb -u root <<'SQL'\nCREATE DATABASE IF NOT EXISTS `%s`;\nCREATE USER IF NOT EXISTS '%s'@'%%' IDENTIFIED BY '%s';\nALTER USER '%s'@'%%' IDENTIFIED BY '%s';\nCREATE USER IF NOT EXISTS '%s'@'localhost' IDENTIFIED BY '%s';\nALTER USER '%s'@'localhost' IDENTIFIED BY '%s';\nGRANT ALL PRIVILEGES ON `%s`.* TO '%s'@'%%';\nGRANT ALL PRIVILEGES ON `%s`.* TO '%s'@'localhost';\nFLUSH PRIVILEGES;\nSQL",
+				inst.DBName,
+				inst.Username, inst.Password,
+				inst.Username, inst.Password,
+				inst.Username, inst.Password,
+				inst.Username, inst.Password,
+				inst.DBName, inst.Username,
+				inst.DBName, inst.Username,
 			),
 		}
 	} else {
@@ -574,6 +624,92 @@ func (p *Provisioner) CleanupVM(inst *models.Instance) error {
 		return fmt.Errorf("unregistervm %s --delete: %w", inst.VMName, err)
 	}
 	return nil
+}
+
+func (p *Provisioner) StopVM(inst *models.Instance) error {
+	if inst.VMName == "" {
+		return nil
+	}
+	running, err := p.isVMRunning(inst.VMName)
+	if err != nil {
+		return err
+	}
+	if !running {
+		inst.Status = models.StatusStopped
+		return p.store.UpdateInstance(inst)
+	}
+
+	_ = p.store.AddLog("INFO", fmt.Sprintf("Apagando VM %s", inst.VMName), inst.ID)
+	if err := p.vbm("controlvm", inst.VMName, "acpipowerbutton"); err != nil {
+		return fmt.Errorf("apagar VM %s: %w", inst.VMName, err)
+	}
+
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		if r, _ := p.isVMRunning(inst.VMName); !r {
+			inst.Status = models.StatusStopped
+			if err := p.store.UpdateInstance(inst); err != nil {
+				return err
+			}
+			_ = p.store.AddLog("OK", fmt.Sprintf("Instancia %s apagada", inst.DBName), inst.ID)
+			return nil
+		}
+		time.Sleep(1 * time.Second)
+	}
+
+	_ = p.store.AddLog("WARN", fmt.Sprintf("ACPI no respondió en %s, forzando apagado", inst.VMName), inst.ID)
+	if err := p.vbm("controlvm", inst.VMName, "poweroff"); err != nil {
+		return fmt.Errorf("forzar apagado de %s: %w", inst.VMName, err)
+	}
+
+	deadline = time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if r, _ := p.isVMRunning(inst.VMName); !r {
+			inst.Status = models.StatusStopped
+			if err := p.store.UpdateInstance(inst); err != nil {
+				return err
+			}
+			_ = p.store.AddLog("OK", fmt.Sprintf("Instancia %s apagada", inst.DBName), inst.ID)
+			return nil
+		}
+		time.Sleep(1 * time.Second)
+	}
+
+	return fmt.Errorf("timeout esperando apagar la VM %s", inst.VMName)
+}
+
+func (p *Provisioner) ResumeVM(inst *models.Instance) error {
+	if inst.VMName == "" {
+		return nil
+	}
+	running, err := p.isVMRunning(inst.VMName)
+	if err != nil {
+		return err
+	}
+	if running {
+		inst.Status = models.StatusRunning
+		return p.store.UpdateInstance(inst)
+	}
+
+	_ = p.store.AddLog("INFO", fmt.Sprintf("Reanudando VM %s", inst.VMName), inst.ID)
+	if err := p.vbm("startvm", inst.VMName, "--type", "headless"); err != nil {
+		return fmt.Errorf("reanudar VM %s: %w", inst.VMName, err)
+	}
+
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		if r, _ := p.isVMRunning(inst.VMName); r {
+			inst.Status = models.StatusRunning
+			if err := p.store.UpdateInstance(inst); err != nil {
+				return err
+			}
+			_ = p.store.AddLog("OK", fmt.Sprintf("Instancia %s reanudada", inst.DBName), inst.ID)
+			return nil
+		}
+		time.Sleep(1 * time.Second)
+	}
+
+	return fmt.Errorf("timeout esperando reanudar la VM %s", inst.VMName)
 }
 
 func (p *Provisioner) rollbackProvision(inst *models.Instance, reservedIP string, cause error) {
@@ -834,7 +970,10 @@ func (p *Provisioner) resetHealthFailure(vmName string) {
 func (p *Provisioner) isVMRunning(vmName string) (bool, error) {
 	out, err := p.vbmOutput("showvminfo", vmName, "--machinereadable")
 	if err != nil {
-		if strings.Contains(err.Error(), "could not find a registered virtual machine") {
+		msg := strings.ToLower(err.Error())
+		if strings.Contains(msg, "could not find a registered virtual machine") ||
+			strings.Contains(msg, "could not find a registered machine") ||
+			strings.Contains(msg, "vbox_e_object_not_found") {
 			return false, nil
 		}
 		return false, err
