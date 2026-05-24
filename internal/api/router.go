@@ -18,13 +18,14 @@ import (
 type Router struct {
 	store *store.Store
 	prov  *provisioner.Provisioner
+	cfg   provisioner.Config
 }
 
 func NewRouter(s *store.Store) http.Handler {
 	cfg := provisioner.DefaultConfig()
 	prov := provisioner.New(cfg, s)
 
-	r := &Router{store: s, prov: prov}
+	r := &Router{store: s, prov: prov, cfg: cfg}
 	mux := http.NewServeMux()
 
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("web/static"))))
@@ -32,12 +33,33 @@ func NewRouter(s *store.Store) http.Handler {
 	mux.HandleFunc("/api/instances", r.handleInstances)
 	mux.HandleFunc("/api/instances/", r.handleInstance)
 	mux.HandleFunc("/api/logs", r.handleLogs)
+	mux.HandleFunc("/api/config", r.handleConfig) // expone la config al frontend
 
 	return mux
 }
 
 func (r *Router) handleIndex(w http.ResponseWriter, req *http.Request) {
 	http.ServeFile(w, req, "web/templates/index.html")
+}
+
+// handleConfig devuelve la configuración activa del provisioner en JSON
+func (r *Router) handleConfig(w http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodGet {
+		jsonError(w, "method not allowed", 405)
+		return
+	}
+	jsonOK(w, map[string]string{
+		"mariadb_template":    r.cfg.MariaDBTemplate,
+		"postgresql_template": r.cfg.PostgreSQLTemplate,
+		"host_only_net":       r.cfg.HostOnlyNet,
+		"ssh_key_path":        r.cfg.SSHKeyPath,
+		"base_ip":             r.cfg.BaseIP,
+		"template_snapshot":   r.cfg.TemplateSnapshot,
+		"template_iso_path":   r.cfg.TemplateISOPath,
+		"template_iso_url":    r.cfg.TemplateISOURL,
+		"template_user":       r.cfg.TemplateUser,
+		"vboxmanage":          r.cfg.VBoxManage,
+	})
 }
 
 func (r *Router) handleInstances(w http.ResponseWriter, req *http.Request) {
@@ -145,14 +167,20 @@ func (r *Router) handleInstance(w http.ResponseWriter, req *http.Request) {
 	case http.MethodDelete:
 		inst, err := r.store.GetInstance(id)
 		if err != nil {
-			jsonError(w, "not found", 404)
+			_ = r.store.DeleteLogsByInstance(id)
+			if err := r.store.DeleteInstance(id); err != nil {
+				jsonError(w, "store: "+err.Error(), 500)
+				return
+			}
+			jsonOK(w, map[string]string{"status": "deleted"})
 			return
 		}
-		go func() {
-			if err := r.prov.Destroy(inst); err != nil {
-				_ = r.store.AddLog("ERROR", fmt.Sprintf("Error eliminando %s: %v", inst.DBName, err), inst.ID)
-			}
-		}()
+		if err := r.prov.Destroy(inst); err != nil {
+			_ = r.store.DeleteLogsByInstance(id)
+			_ = r.store.DeleteInstance(id)
+			jsonError(w, fmt.Sprintf("error eliminando %s: %v", inst.DBName, err), 500)
+			return
+		}
 		jsonOK(w, map[string]string{"status": "deleting"})
 	default:
 		jsonError(w, "method not allowed", 405)

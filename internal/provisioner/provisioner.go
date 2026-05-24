@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math/big"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -15,6 +15,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"golang.org/x/crypto/ssh"
 
 	"nimbusDBaaS/internal/models"
 	"nimbusDBaaS/internal/store"
@@ -32,12 +34,9 @@ type Config struct {
 	TemplateSnapshot   string
 	BaseIP             string
 	VBoxManage         string
-	Simulated          bool
 }
 
 func DefaultConfig() Config {
-	sim := os.Getenv("NIMBUS_SIMULATED")
-	simulated := sim == "" || sim == "1" || strings.ToLower(sim) == "true"
 	home, err := os.UserHomeDir()
 	if err != nil {
 		home = "."
@@ -45,16 +44,23 @@ func DefaultConfig() Config {
 	return Config{
 		MariaDBTemplate:    getEnv("NIMBUS_MARIADB_TEMPLATE", "nimbus-mariadb-template"),
 		PostgreSQLTemplate: getEnv("NIMBUS_PG_TEMPLATE", "nimbus-pg-template"),
-		HostOnlyNet:        getEnv("NIMBUS_HOST_ONLY_NET", "vboxnet0"),
-		SSHKeyPath:         getEnv("NIMBUS_SSH_KEY", filepath.Join(home, ".ssh", "nimbus_id_rsa")),
-		TemplateISOPath:    getEnv("NIMBUS_TEMPLATE_ISO", filepath.Join(home, "Downloads", "debian-13.4.0-amd64-netinst.iso")),
-		TemplateISOURL:     getEnv("NIMBUS_TEMPLATE_ISO_URL", "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/"),
-		TemplateUser:       getEnv("NIMBUS_TEMPLATE_USER", "nimbus"),
-		TemplatePassword:   getEnv("NIMBUS_TEMPLATE_PASSWORD", "nimbus-vm"),
-		TemplateSnapshot:   getEnv("NIMBUS_TEMPLATE_SNAPSHOT", "base"),
-		BaseIP:             getEnv("NIMBUS_BASE_IP", "192.168.56"),
-		VBoxManage:         getEnv("VBOXMANAGE", "VBoxManage"),
-		Simulated:          simulated,
+
+		// Nombre del adaptador Host-Only en Windows — ajusta si el tuyo tiene número diferente
+		HostOnlyNet: getEnv("NIMBUS_HOST_ONLY_NET", "VirtualBox Host-Only Ethernet Adapter"),
+
+		// Usa tu llave RSA existente
+		SSHKeyPath: getEnv("NIMBUS_SSH_KEY", filepath.Join(home, ".ssh", "id_rsa")),
+
+		TemplateISOPath:  getEnv("NIMBUS_TEMPLATE_ISO", filepath.Join(home, "Downloads", "debian-13.4.0-amd64-netinst.iso")),
+		TemplateISOURL:   getEnv("NIMBUS_TEMPLATE_ISO_URL", "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/"),
+		TemplateUser:     getEnv("NIMBUS_TEMPLATE_USER", "root"),
+		TemplatePassword: getEnv("NIMBUS_TEMPLATE_PASSWORD", "user"),
+		TemplateSnapshot: getEnv("NIMBUS_TEMPLATE_SNAPSHOT", "base"),
+
+		// Tu red Host-Only: 192.168.10.0/24
+		BaseIP: getEnv("NIMBUS_BASE_IP", "192.168.10"),
+
+		VBoxManage: getEnv("VBOXMANAGE", "VBoxManage"),
 	}
 }
 
@@ -93,102 +99,39 @@ func (p *Provisioner) provision(inst *models.Instance, sqlContent string) error 
 		fmt.Sprintf("Solicitud de creación de la base de datos %s con usuario %s en %s",
 			inst.DBName, inst.Username, engineLabel(inst.Engine)), inst.ID)
 
-	inst.VMName = fmt.Sprintf("nimbus-%s-%s", inst.Engine, inst.ID[:8])
-
-	if p.cfg.Simulated {
-		return p.simulatedProvision(inst, sqlContent)
-	}
+	inst.VMName = inst.DBName
 	return p.realProvision(inst, sqlContent)
 }
 
-func (p *Provisioner) simulatedProvision(inst *models.Instance, sqlContent string) error {
-	type step struct {
-		d time.Duration
-		f func() error
-	}
-	steps := []step{
-		{600 * time.Millisecond, func() error {
-			return p.store.AddLog("INFO",
-				fmt.Sprintf("Clonando plantilla %s para la instancia %s", engineLabel(inst.Engine), inst.VMName), inst.ID)
-		}},
-		{900 * time.Millisecond, func() error {
-			return p.store.AddLog("INFO",
-				fmt.Sprintf("Configurando red host-only para %s", inst.VMName), inst.ID)
-		}},
-		{1000 * time.Millisecond, func() error {
-			return p.store.AddLog("INFO",
-				fmt.Sprintf("Iniciando máquina virtual %s", inst.VMName), inst.ID)
-		}},
-		{1500 * time.Millisecond, func() error {
-			inst.Host = simulatedIP(p.cfg.BaseIP)
-			inst.Port = defaultPort(inst.Engine)
-			inst.AccessCmd = accessCmd(inst)
-			_ = p.store.UpdateInstance(inst)
-			return p.store.AddLog("OK",
-				fmt.Sprintf("Creación de la MV con %s para la ejecución de la base de datos %s",
-					engineLabel(inst.Engine), inst.DBName), inst.ID)
-		}},
-		{800 * time.Millisecond, func() error {
-			return p.store.AddLog("INFO",
-				fmt.Sprintf("Conectando por SSH a %s para crear la base de datos %s", inst.Host, inst.DBName), inst.ID)
-		}},
-		{600 * time.Millisecond, func() error {
-			return p.store.AddLog("INFO",
-				fmt.Sprintf("Creando usuario %s y asignando privilegios en %s", inst.Username, inst.DBName), inst.ID)
-		}},
-	}
-
-	if sqlContent != "" {
-		steps = append(steps, step{400 * time.Millisecond, func() error {
-			return p.store.AddLog("INFO",
-				fmt.Sprintf("Ejecutando archivo SQL en la base de datos %s", inst.DBName), inst.ID)
-		}})
-	}
-
-	for _, s := range steps {
-		time.Sleep(s.d)
-		if err := s.f(); err != nil {
-			return err
-		}
-	}
-
-	inst.Status = models.StatusRunning
-	if err := p.store.UpdateInstance(inst); err != nil {
-		return err
-	}
-	return p.store.AddLog("OK",
-		fmt.Sprintf("Instancia %s lista — host asignado %s", inst.DBName, inst.Host), inst.ID)
-}
-
 func (p *Provisioner) realProvision(inst *models.Instance, sqlContent string) error {
-	template := p.cfg.MariaDBTemplate
-	if inst.Engine == models.EnginePostgreSQL {
-		template = p.cfg.PostgreSQLTemplate
-	}
-
-	if err := p.ensureTemplateReady(template, inst.Engine); err != nil {
+	template, err := p.ensureTemplateReady(inst.Engine)
+	if err != nil {
 		return fmt.Errorf("preparar plantilla: %w", err)
 	}
 
 	_ = p.store.AddLog("INFO", fmt.Sprintf("Clonando plantilla %s → %s (disco multiconexión)", template, inst.VMName), inst.ID)
-	if err := p.vbm("clonevm", template, "--snapshot", p.cfg.TemplateSnapshot, "--options", "link", "--name", inst.VMName, "--register"); err != nil {
+	if err := p.vbm("clonevm", template,
+		"--snapshot", p.cfg.TemplateSnapshot,
+		"--options", "link",
+		"--name", inst.VMName,
+		"--register"); err != nil {
 		return fmt.Errorf("clonar VM: %w", err)
 	}
-	if err := p.vbm("modifyvm", inst.VMName, "--nic1", "hostonly", "--hostonlyadapter1", p.cfg.HostOnlyNet); err != nil {
-		return fmt.Errorf("configurar red: %w", err)
-	}
+
 	_ = p.store.AddLog("INFO", fmt.Sprintf("Iniciando VM %s", inst.VMName), inst.ID)
 	if err := p.vbm("startvm", inst.VMName, "--type", "headless"); err != nil {
 		return fmt.Errorf("iniciar VM: %w", err)
 	}
 
-	ip, err := p.waitForIP(inst.VMName, 90*time.Second)
+	// Asigna IP fija y espera a que SSH esté disponible
+	ip, err := p.assignAndWaitForIP(inst)
 	if err != nil {
-		return fmt.Errorf("esperar IP: %w", err)
+		return fmt.Errorf("asignar IP: %w", err)
 	}
 	inst.Host = ip
 	inst.Port = defaultPort(inst.Engine)
 	inst.AccessCmd = accessCmd(inst)
+
 	_ = p.store.AddLog("OK",
 		fmt.Sprintf("Creación de la MV con %s para la ejecución de la base de datos %s", engineLabel(inst.Engine), inst.DBName), inst.ID)
 	_ = p.store.UpdateInstance(inst)
@@ -203,35 +146,213 @@ func (p *Provisioner) realProvision(inst *models.Instance, sqlContent string) er
 	return p.store.AddLog("OK", fmt.Sprintf("Instancia %s lista — host asignado %s", inst.DBName, inst.Host), inst.ID)
 }
 
-func (p *Provisioner) sshProvision(inst *models.Instance, sqlContent string) error {
-	sshArgs := []string{
-		"-i", p.cfg.SSHKeyPath,
-		"-o", "StrictHostKeyChecking=no",
-		"-o", "ConnectTimeout=10",
-		fmt.Sprintf("root@%s", inst.Host),
+// assignAndWaitForIP calcula una IP libre en 192.168.10.20-254,
+// arranca la VM con la IP de la plantilla y la reconfigura vía SSH.
+func (p *Provisioner) assignAndWaitForIP(inst *models.Instance) (string, error) {
+	ip, err := p.nextFreeIP()
+	if err != nil {
+		return "", err
+	}
+	// Primero intentamos la IP base que la plantilla usa por convención
+	var bootIP string
+	var tryBaseIP string
+	if inst.Engine == models.EngineMariaDB {
+		tryBaseIP = fmt.Sprintf("%s.11", p.cfg.BaseIP)
+	} else {
+		tryBaseIP = fmt.Sprintf("%s.10", p.cfg.BaseIP)
 	}
 
-	run := func(cmd string) error {
-		args := append(sshArgs, cmd)
-		out, err := exec.Command("ssh", args...).CombinedOutput()
+	// Intentar SSH a la IP base (plantilla) — suele ser más rápido cuando guestprops no están disponibles
+	if err := p.waitForSSH(tryBaseIP, 30*time.Second); err == nil {
+		bootIP = tryBaseIP
+		log.Printf("[provisioner] VM %s respondió en IP base %s → reasignando a %s", inst.VMName, bootIP, ip)
+		_ = p.store.AddLog("INFO", fmt.Sprintf("SSH disponible en IP base %s", tryBaseIP), inst.ID)
+	} else {
+		// Fallback: intentar obtener la IP vía guestproperty
+		bootIP, err = p.waitForGuestHostOnlyIP(inst.VMName, 90*time.Second)
 		if err != nil {
-			return fmt.Errorf("ssh %q: %w\n%s", cmd, err, out)
+			log.Printf("[provisioner] guestproperty no devolvió IP para %s: %v — probando escaneo SSH corto", inst.VMName, err)
+			_ = p.store.AddLog("WARN", fmt.Sprintf("guestproperty no devolvió IP para %s: %v", inst.VMName, err), inst.ID)
+			// Intentar un escaneo rápido en un conjunto reducido de IPs: tryBaseIP, la IP candidata, y .20-.30
+			candidates := []string{tryBaseIP, ip}
+			for i := 20; i <= 30; i++ {
+				cand := fmt.Sprintf("%s.%d", p.cfg.BaseIP, i)
+				if cand == ip || cand == tryBaseIP {
+					continue
+				}
+				candidates = append(candidates, cand)
+			}
+			found := ""
+			for _, c := range candidates {
+				log.Printf("[provisioner] probando SSH en %s (escaneo corto)", c)
+				_ = p.store.AddLog("INFO", fmt.Sprintf("Probando SSH en %s (escaneo corto)", c), inst.ID)
+				if err := p.waitForSSH(c, 5*time.Second); err == nil {
+					found = c
+					log.Printf("[provisioner] encontrado SSH en %s", c)
+					_ = p.store.AddLog("OK", fmt.Sprintf("Encontrado SSH en %s", c), inst.ID)
+					break
+				}
+			}
+			if found == "" {
+				_ = p.store.AddLog("ERROR", fmt.Sprintf("No se encontró SSH en rango de escaneo para %s", inst.VMName), inst.ID)
+				return "", fmt.Errorf("IP host-only no disponible en %s: %w", inst.VMName, err)
+			}
+			bootIP = found
+		} else {
+			log.Printf("[provisioner] VM %s arrancó con IP host-only %s → reasignando a %s", inst.VMName, bootIP, ip)
+			_ = p.store.AddLog("INFO", fmt.Sprintf("Guestproperty devolvió IP %s para %s", bootIP, inst.VMName), inst.ID)
+			// Aún así esperar a SSH en la IP detectada
+			if err := p.waitForSSH(bootIP, 30*time.Second); err != nil {
+				return "", fmt.Errorf("SSH no disponible en %s: %w", bootIP, err)
+			}
 		}
-		return nil
+	}
+
+	// Cambiar la IP estática en la VM clonada (ya entramos como root)
+	changeIPCmd := fmt.Sprintf(
+		"sed -i 's/%s/%s/g' /etc/network/interfaces && systemctl restart networking",
+		bootIP, ip,
+	)
+	if err := p.runSSH(bootIP, changeIPCmd); err != nil {
+		_ = p.store.AddLog("ERROR", fmt.Sprintf("Error cambiando IP en VM %s: %v", inst.VMName, err), inst.ID)
+		return "", fmt.Errorf("cambiar IP en VM: %w", err)
+	}
+	_ = p.store.AddLog("INFO", fmt.Sprintf("IP cambiada en VM %s de %s a %s", inst.VMName, bootIP, ip), inst.ID)
+
+	// Esperar a que SSH responda en la nueva IP
+	if err := p.waitForSSH(ip, 30*time.Second); err != nil {
+		return "", fmt.Errorf("SSH no disponible en nueva IP %s: %w", ip, err)
+	}
+
+	return ip, nil
+}
+
+func (p *Provisioner) waitForGuestHostOnlyIP(vmName string, timeout time.Duration) (string, error) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		for nic := 0; nic < 4; nic++ {
+			path := fmt.Sprintf("/VirtualBox/GuestInfo/Net/%d/V4/IP", nic)
+			if out, err := p.vbmOutput("guestproperty", "get", vmName, path); err == nil {
+				line := strings.TrimSpace(out)
+				if strings.HasPrefix(line, "Value:") {
+					ip := strings.TrimSpace(strings.TrimPrefix(line, "Value:"))
+					if ip != "" && ip != "0.0.0.0" && strings.HasPrefix(ip, p.cfg.BaseIP+".") {
+						return ip, nil
+					}
+				}
+			}
+		}
+		time.Sleep(3 * time.Second)
+	}
+	return "", fmt.Errorf("timeout esperando IP host-only de %s", vmName)
+}
+
+// nextFreeIP busca la primera IP libre en el rango .20 - .254
+func (p *Provisioner) nextFreeIP() (string, error) {
+	instances, err := p.store.ListInstances()
+	if err != nil {
+		return "", err
+	}
+	used := map[string]bool{}
+	for _, inst := range instances {
+		if inst.Host != "" {
+			used[inst.Host] = true
+		}
+	}
+	for i := 20; i <= 254; i++ {
+		candidate := fmt.Sprintf("%s.%d", p.cfg.BaseIP, i)
+		if !used[candidate] {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("no hay IPs disponibles en el rango %s.20-%s.254", p.cfg.BaseIP, p.cfg.BaseIP)
+}
+
+// waitForSSH intenta conectar por SSH hasta que tenga éxito o se agote el tiempo
+func (p *Provisioner) waitForSSH(ip string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		err := p.runSSH(ip, "echo ok")
+		if err == nil {
+			return nil
+		}
+		time.Sleep(3 * time.Second)
+	}
+	return fmt.Errorf("timeout esperando SSH en %s", ip)
+}
+
+// runSSH ejecuta un comando remoto vía SSH
+func (p *Provisioner) runSSH(ip, cmd string) error {
+	user := p.cfg.TemplateUser
+	addr := net.JoinHostPort(ip, "22")
+
+	var authMethods []ssh.AuthMethod
+
+	// Try private key if available
+	if keyPath := p.cfg.SSHKeyPath; keyPath != "" {
+		if keyBytes, err := os.ReadFile(keyPath); err == nil {
+			if signer, err := ssh.ParsePrivateKey(keyBytes); err == nil {
+				authMethods = append(authMethods, ssh.PublicKeys(signer))
+			}
+		}
+	}
+
+	// Fallback to template password if configured
+	if p.cfg.TemplatePassword != "" {
+		authMethods = append(authMethods, ssh.Password(p.cfg.TemplatePassword))
+	}
+
+	if len(authMethods) == 0 {
+		return fmt.Errorf("no SSH auth methods available (no key and no template password)")
+	}
+
+	cfg := &ssh.ClientConfig{
+		User:            user,
+		Auth:            authMethods,
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         5 * time.Second,
+	}
+
+	conn, err := ssh.Dial("tcp", addr, cfg)
+	if err != nil {
+		return fmt.Errorf("ssh dial %s: %w", addr, err)
+	}
+	defer conn.Close()
+
+	sess, err := conn.NewSession()
+	if err != nil {
+		return fmt.Errorf("ssh session: %w", err)
+	}
+	defer sess.Close()
+
+	var bout bytes.Buffer
+	var berr bytes.Buffer
+	sess.Stdout = &bout
+	sess.Stderr = &berr
+
+	if err := sess.Run(cmd); err != nil {
+		return fmt.Errorf("ssh run: %w: %s", err, berr.String())
+	}
+	return nil
+}
+
+func (p *Provisioner) sshProvision(inst *models.Instance, sqlContent string) error {
+	run := func(cmd string) error {
+		return p.runSSH(inst.Host, cmd)
 	}
 
 	var cmds []string
 	if inst.Engine == models.EngineMariaDB {
 		cmds = []string{
-			fmt.Sprintf("mariadb -u root -e \"CREATE DATABASE IF NOT EXISTS \\`%s\\`;\"", inst.DBName),
+			fmt.Sprintf("mariadb -u root -e \"CREATE DATABASE IF NOT EXISTS `%s`;\"", inst.DBName),
 			fmt.Sprintf("mariadb -u root -e \"CREATE USER IF NOT EXISTS '%s'@'%%' IDENTIFIED BY '%s';\"", inst.Username, inst.Password),
-			fmt.Sprintf("mariadb -u root -e \"GRANT ALL PRIVILEGES ON \\`%s\\`.* TO '%s'@'%%'; FLUSH PRIVILEGES;\"", inst.DBName, inst.Username),
+			fmt.Sprintf("mariadb -u root -e \"GRANT ALL PRIVILEGES ON `%s`.* TO '%s'@'%%'; FLUSH PRIVILEGES;\"", inst.DBName, inst.Username),
 		}
 	} else {
 		cmds = []string{
-			fmt.Sprintf("sudo -u postgres psql -c \"CREATE DATABASE %s;\"", inst.DBName),
-			fmt.Sprintf("sudo -u postgres psql -c \"CREATE USER %s WITH PASSWORD '%s';\"", inst.Username, inst.Password),
-			fmt.Sprintf("sudo -u postgres psql -c \"GRANT ALL PRIVILEGES ON DATABASE %s TO %s;\"", inst.DBName, inst.Username),
+			fmt.Sprintf(`runuser -u postgres -- psql -c "CREATE DATABASE %s;"`, inst.DBName),
+			fmt.Sprintf(`runuser -u postgres -- psql -c "CREATE USER %s WITH PASSWORD '%s';"`, inst.Username, inst.Password),
+			fmt.Sprintf(`runuser -u postgres -- psql -c "GRANT ALL PRIVILEGES ON DATABASE %s TO %s;"`, inst.DBName, inst.Username),
 		}
 	}
 	for _, c := range cmds {
@@ -262,11 +383,6 @@ func (p *Provisioner) sshProvision(inst *models.Instance, sqlContent string) err
 
 func (p *Provisioner) Destroy(inst *models.Instance) error {
 	_ = p.store.AddLog("INFO", fmt.Sprintf("Eliminando instancia %s", inst.DBName), inst.ID)
-	if p.cfg.Simulated {
-		time.Sleep(300 * time.Millisecond)
-		_ = p.store.DeleteInstance(inst.ID)
-		return p.store.AddLog("OK", fmt.Sprintf("Instancia %s de base de datos eliminada", inst.DBName), inst.ID)
-	}
 	if err := p.CleanupVM(inst); err != nil {
 		_ = p.store.AddLog("WARN", fmt.Sprintf("No se pudo eliminar la VM %s: %v", inst.VMName, err), inst.ID)
 	}
@@ -275,7 +391,7 @@ func (p *Provisioner) Destroy(inst *models.Instance) error {
 }
 
 func (p *Provisioner) CleanupVM(inst *models.Instance) error {
-	if p.cfg.Simulated || inst.VMName == "" {
+	if inst.VMName == "" {
 		return nil
 	}
 	registered, err := p.vmExists(inst.VMName)
@@ -287,10 +403,7 @@ func (p *Provisioner) CleanupVM(inst *models.Instance) error {
 	}
 	_ = p.vbm("controlvm", inst.VMName, "poweroff")
 	time.Sleep(2 * time.Second)
-	if err := p.vbm("unregistervm", inst.VMName, "--delete"); err != nil {
-		return err
-	}
-	return nil
+	return p.vbm("unregistervm", inst.VMName, "--delete")
 }
 
 func (p *Provisioner) vbm(args ...string) error {
@@ -329,15 +442,19 @@ func (p *Provisioner) vbmOutput(args ...string) (string, error) {
 	return stdout.String(), nil
 }
 
-func (p *Provisioner) ensureTemplateReady(templateName string, engine models.Engine) error {
+func (p *Provisioner) ensureTemplateReady(engine models.Engine) (string, error) {
+	templateName := p.templateForEngine(engine)
 	registered, err := p.vmExists(templateName)
 	if err != nil {
-		return err
+		return "", err
 	}
-	if registered {
-		return p.ensureTemplateSnapshot(templateName)
+	if !registered {
+		return "", fmt.Errorf("la plantilla %s no existe en VirtualBox — créala manualmente según las instrucciones", templateName)
 	}
-	return p.bootstrapTemplate(templateName, engine)
+	if err := p.ensureTemplateSnapshot(templateName); err != nil {
+		return "", err
+	}
+	return templateName, nil
 }
 
 func (p *Provisioner) ensureTemplateSnapshot(templateName string) error {
@@ -345,12 +462,11 @@ func (p *Provisioner) ensureTemplateSnapshot(templateName string) error {
 	if err != nil {
 		return err
 	}
-	if hasSnapshot {
-		return p.ensureTemplateDiskMultiattach(templateName)
-	}
-	_ = p.store.AddLog("INFO", fmt.Sprintf("La plantilla %s existe pero no tiene snapshot %s; NimbusDBaaS lo creará", templateName, p.cfg.TemplateSnapshot), "")
-	if err := p.vbm("snapshot", templateName, "take", p.cfg.TemplateSnapshot, "--description", "NimbusDBaaS base template"); err != nil {
-		return fmt.Errorf("crear snapshot base: %w", err)
+	if !hasSnapshot {
+		return fmt.Errorf(
+			"la plantilla %s no tiene el snapshot '%s' — ejecútalo con: VBoxManage snapshot \"%s\" take \"%s\"",
+			templateName, p.cfg.TemplateSnapshot, templateName, p.cfg.TemplateSnapshot,
+		)
 	}
 	return p.ensureTemplateDiskMultiattach(templateName)
 }
@@ -364,11 +480,7 @@ func (p *Provisioner) snapshotExists(vmName, snapshotName string) (bool, error) 
 		}
 		return false, err
 	}
-	needle := fmt.Sprintf(`SnapshotName="%s"`, snapshotName)
-	if strings.Contains(out, needle) {
-		return true, nil
-	}
-	return false, nil
+	return strings.Contains(out, fmt.Sprintf(`SnapshotName="%s"`, snapshotName)), nil
 }
 
 func (p *Provisioner) vmExists(vmName string) (bool, error) {
@@ -379,89 +491,11 @@ func (p *Provisioner) vmExists(vmName string) (bool, error) {
 	return strings.Contains(out, fmt.Sprintf("\"%s\"", vmName)), nil
 }
 
-func (p *Provisioner) bootstrapTemplate(templateName string, engine models.Engine) error {
-	_ = p.store.AddLog("INFO", fmt.Sprintf("La plantilla %s no existe; NimbusDBaaS la creará automáticamente", templateName), "")
-
-	hostOnlyNet, err := p.ensureHostOnlyNet()
-	if err != nil {
-		return err
+func (p *Provisioner) templateForEngine(engine models.Engine) string {
+	if engine == models.EnginePostgreSQL {
+		return p.cfg.PostgreSQLTemplate
 	}
-	if err := p.ensureSSHKeyPair(); err != nil {
-		return err
-	}
-	if err := p.ensureDebianISO(); err != nil {
-		return err
-	}
-
-	registered, err := p.vmExists(templateName)
-	if err != nil {
-		return err
-	}
-	if !registered {
-		if err := p.vbm("createvm", "--name", templateName, "--ostype", "Debian_64", "--register"); err != nil {
-			return fmt.Errorf("crear plantilla: %w", err)
-		}
-	}
-
-	if err := p.vbm("modifyvm", templateName,
-		"--memory", "1024",
-		"--cpus", "1",
-		"--nic1", "hostonly",
-		"--hostonlyadapter1", hostOnlyNet,
-		"--audio", "none",
-		"--usb", "off",
-		"--boot1", "dvd",
-		"--boot2", "disk"); err != nil {
-		return fmt.Errorf("configurar plantilla: %w", err)
-	}
-
-	diskPath := p.templateDiskPath(templateName)
-	if err := p.vbm("createmedium", "disk", "--filename", diskPath, "--size", "8192", "--format", "VDI"); err != nil {
-		return fmt.Errorf("crear disco base: %w", err)
-	}
-	if err := p.vbm("storagectl", templateName, "--name", "SATA", "--add", "sata", "--controller", "IntelAhci"); err != nil {
-		return fmt.Errorf("crear controlador SATA: %w", err)
-	}
-	if err := p.vbm("storageattach", templateName, "--storagectl", "SATA", "--port", "0", "--device", "0", "--type", "hdd", "--medium", diskPath); err != nil {
-		return fmt.Errorf("adjuntar disco base: %w", err)
-	}
-	if err := p.vbm("storagectl", templateName, "--name", "IDE", "--add", "ide"); err != nil {
-		return fmt.Errorf("crear controlador IDE: %w", err)
-	}
-	if err := p.vbm("storageattach", templateName, "--storagectl", "IDE", "--port", "0", "--device", "0", "--type", "dvddrive", "--medium", p.cfg.TemplateISOPath); err != nil {
-		return fmt.Errorf("adjuntar ISO Debian: %w", err)
-	}
-
-	if err := p.vbm("unattended", "install", templateName,
-		"--iso", p.cfg.TemplateISOPath,
-		"--user", p.cfg.TemplateUser,
-		"--password", p.cfg.TemplatePassword,
-		"--full-user-name", "NimbusDBaaS",
-		"--install-additions",
-		"--locale", "en_US",
-		"--country", "US",
-		"--time-zone", "UTC",
-		"--hostname", templateName+".localdomain",
-		"--package-selection-adjustment", "minimal",
-		"--start-vm", "headless"); err != nil {
-		return fmt.Errorf("instalacion unattended: %w", err)
-	}
-
-	if err := p.waitForGuestAdditions(templateName, 20*time.Minute); err != nil {
-		return fmt.Errorf("esperar guest additions: %w", err)
-	}
-
-	if err := p.provisionTemplateGuest(templateName, engine); err != nil {
-		return err
-	}
-
-	if err := p.vbm("controlvm", templateName, "poweroff"); err != nil {
-		return fmt.Errorf("apagar plantilla: %w", err)
-	}
-	if err := p.vbm("snapshot", templateName, "take", p.cfg.TemplateSnapshot, "--description", "NimbusDBaaS base template"); err != nil {
-		return fmt.Errorf("crear snapshot base: %w", err)
-	}
-	return p.ensureTemplateDiskMultiattach(templateName)
+	return p.cfg.MariaDBTemplate
 }
 
 func (p *Provisioner) ensureTemplateDiskMultiattach(templateName string) error {
@@ -469,9 +503,7 @@ func (p *Provisioner) ensureTemplateDiskMultiattach(templateName string) error {
 	if err != nil {
 		return err
 	}
-	if err := p.vbm("modifymedium", "disk", diskPath, "--type", "multiattach"); err != nil {
-		return fmt.Errorf("configurar disco multiattach: %w", err)
-	}
+	_ = diskPath
 	return nil
 }
 
@@ -480,127 +512,38 @@ func (p *Provisioner) templateMediumPath(templateName string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	re := regexp.MustCompile(`(?m)^[A-Za-z0-9_-]+-0-0="([^"]+)"$`)
-	matches := re.FindAllStringSubmatch(out, -1)
-	for _, match := range matches {
-		if len(match) >= 2 && strings.HasSuffix(strings.ToLower(match[1]), ".vdi") {
-			return match[1], nil
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || !strings.Contains(line, `="`) {
+			continue
 		}
-	}
-	for _, match := range matches {
-		if len(match) >= 2 && match[1] != "" {
-			return match[1], nil
+		parts := strings.SplitN(line, `="`, 2)
+		if len(parts) != 2 {
+			continue
+		}
+		value := strings.TrimSuffix(parts[1], `"`)
+		if value == "" {
+			continue
+		}
+		lower := strings.ToLower(value)
+		if strings.HasSuffix(lower, ".vdi") || strings.HasSuffix(lower, ".vmdk") || strings.HasSuffix(lower, ".vhd") || strings.HasSuffix(lower, ".hdd") {
+			return value, nil
 		}
 	}
 	return "", fmt.Errorf("no se pudo determinar el disco de la plantilla %s", templateName)
 }
 
-func (p *Provisioner) provisionTemplateGuest(templateName string, engine models.Engine) error {
-	pubPath := p.cfg.SSHKeyPath + ".pub"
-	keyData, err := os.ReadFile(pubPath)
+// ── Métodos de bootstrap automático (no se usan en tu flujo manual) ───────
+
+func (p *Provisioner) ensureHostOnlyNet() (string, error) {
+	out, err := p.vbmOutput("list", "hostonlyifs")
 	if err != nil {
-		return fmt.Errorf("leer llave publica SSH: %w", err)
+		return "", err
 	}
-
-	keyFile, err := os.CreateTemp("", "nimbus-authorized_keys-*.pub")
-	if err != nil {
-		return err
+	if strings.Contains(out, p.cfg.HostOnlyNet) {
+		return p.cfg.HostOnlyNet, nil
 	}
-	if _, err := keyFile.Write(keyData); err != nil {
-		_ = keyFile.Close()
-		_ = os.Remove(keyFile.Name())
-		return err
-	}
-	if err := keyFile.Close(); err != nil {
-		_ = os.Remove(keyFile.Name())
-		return err
-	}
-	defer os.Remove(keyFile.Name())
-
-	if err := p.guestRun(templateName, "root", p.cfg.TemplatePassword, `mkdir -p /root/.ssh && chmod 700 /root/.ssh`); err != nil {
-		return fmt.Errorf("preparar ssh root: %w", err)
-	}
-	if err := p.guestCopyTo(templateName, "root", p.cfg.TemplatePassword, keyFile.Name(), "/root/.ssh/"); err != nil {
-		return fmt.Errorf("copiar llave SSH: %w", err)
-	}
-	if err := p.guestRun(templateName, "root", p.cfg.TemplatePassword, `set -e; mv /root/.ssh/`+filepath.Base(keyFile.Name())+` /root/.ssh/authorized_keys; chmod 600 /root/.ssh/authorized_keys`); err != nil {
-		return fmt.Errorf("activar llave SSH: %w", err)
-	}
-
-	if engine == models.EngineMariaDB {
-		script := `set -e
-export DEBIAN_FRONTEND=noninteractive
-apt-get update
-apt-get install -y openssh-server mariadb-server
-sed -i 's/^#\?bind-address.*/bind-address = 0.0.0.0/' /etc/mysql/mariadb.conf.d/50-server.cnf
-systemctl enable ssh mariadb`
-		if err := p.guestRun(templateName, "root", p.cfg.TemplatePassword, script); err != nil {
-			return fmt.Errorf("configurar plantilla MariaDB: %w", err)
-		}
-		return nil
-	}
-
-	script := `set -e
-export DEBIAN_FRONTEND=noninteractive
-apt-get update
-apt-get install -y openssh-server postgresql
-sed -i "s/^#\?listen_addresses =.*/listen_addresses = '*'" /etc/postgresql/*/main/postgresql.conf
-grep -q '^host all all 0.0.0.0/0' /etc/postgresql/*/main/pg_hba.conf || echo 'host all all 0.0.0.0/0 md5' >> /etc/postgresql/*/main/pg_hba.conf
-systemctl enable ssh postgresql`
-	if err := p.guestRun(templateName, "root", p.cfg.TemplatePassword, script); err != nil {
-		return fmt.Errorf("configurar plantilla PostgreSQL: %w", err)
-	}
-	return nil
-}
-
-func (p *Provisioner) waitForGuestAdditions(vmName string, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if out, err := p.vbmOutput("guestproperty", "get", vmName, "/VirtualBox/GuestAdd/Version"); err == nil && strings.Contains(out, "Value:") {
-			return nil
-		}
-		time.Sleep(5 * time.Second)
-	}
-	return fmt.Errorf("timeout esperando guest additions de %s", vmName)
-}
-
-func (p *Provisioner) guestRun(vmName, username, password, shellCommand string) error {
-	args := []string{"guestcontrol", vmName, "run", "--username", username, "--password", password, "--wait-stdout", "--wait-stderr", "--exe", "/bin/sh", "--", "-lc", shellCommand}
-	return p.vbm(args...)
-}
-
-func (p *Provisioner) guestCopyTo(vmName, username, password, hostSource, guestTarget string) error {
-	args := []string{"guestcontrol", vmName, "copyto", "--username", username, "--password", password, "--recursive", "--target-directory", guestTarget, hostSource}
-	return p.vbm(args...)
-}
-
-func (p *Provisioner) templateDiskPath(templateName string) string {
-	baseDir := filepath.Dir(p.cfg.SSHKeyPath)
-	if baseDir == "." {
-		if home, err := os.UserHomeDir(); err == nil {
-			baseDir = home
-		}
-	}
-	return filepath.Join(baseDir, templateName+".vdi")
-}
-
-func (p *Provisioner) ensureSSHKeyPair() error {
-	if _, err := os.Stat(p.cfg.SSHKeyPath); err == nil {
-		if _, err := os.Stat(p.cfg.SSHKeyPath + ".pub"); err == nil {
-			return nil
-		}
-	}
-	if err := os.MkdirAll(filepath.Dir(p.cfg.SSHKeyPath), 0700); err != nil {
-		return err
-	}
-	cmd := exec.Command("ssh-keygen", "-t", "rsa", "-b", "4096", "-f", p.cfg.SSHKeyPath, "-N", "", "-C", "nimbus-dbaas")
-	var buf bytes.Buffer
-	cmd.Stdout = &buf
-	cmd.Stderr = &buf
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("generar llave SSH: %w: %s", err, buf.String())
-	}
-	return nil
+	return "", fmt.Errorf("red host-only '%s' no encontrada — créala en VirtualBox > Archivo > Administrador de red de anfitrión", p.cfg.HostOnlyNet)
 }
 
 func (p *Provisioner) ensureDebianISO() error {
@@ -631,10 +574,8 @@ func (p *Provisioner) ensureDebianISO() error {
 		return err
 	}
 	defer file.Close()
-	if _, err := io.Copy(file, resp.Body); err != nil {
-		return err
-	}
-	return nil
+	_, err = io.Copy(file, resp.Body)
+	return err
 }
 
 func isValidISOFile(path string) (bool, error) {
@@ -664,99 +605,89 @@ func isValidISOFile(path string) (bool, error) {
 }
 
 func (p *Provisioner) resolveDebianISOURL() (string, error) {
-	if ok, err := p.urlReachable(p.cfg.TemplateISOURL); err == nil && ok {
-		return p.cfg.TemplateISOURL, nil
-	}
-
 	indexURL := p.cfg.TemplateISOURL
-	if strings.HasSuffix(indexURL, ".iso") {
-		if idx := strings.LastIndex(indexURL, "/"); idx >= 0 {
-			indexURL = indexURL[:idx+1]
-		}
-	} else if !strings.HasSuffix(indexURL, "/") {
+	if !strings.HasSuffix(indexURL, "/") {
 		indexURL += "/"
 	}
-
 	resp, err := http.Get(indexURL)
 	if err != nil {
 		return "", fmt.Errorf("resolver índice Debian: %w", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("resolver índice Debian: %s", resp.Status)
-	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("resolver índice Debian: %w", err)
+		return "", err
 	}
 	re := regexp.MustCompile(`debian-[0-9.]+-amd64-netinst\.iso`)
 	match := re.FindString(string(body))
 	if match == "" {
-		return "", fmt.Errorf("resolver índice Debian: no se encontró netinst amd64")
+		return "", fmt.Errorf("no se encontró netinst amd64 en %s", indexURL)
 	}
 	return indexURL + match, nil
 }
 
-func (p *Provisioner) urlReachable(url string) (bool, error) {
-	req, err := http.NewRequest(http.MethodHead, url, nil)
-	if err != nil {
-		return false, err
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return false, err
-	}
-	defer resp.Body.Close()
-	return resp.StatusCode >= 200 && resp.StatusCode < 300, nil
-}
+// ── Health check ──────────────────────────────────────────────────────────
 
-func (p *Provisioner) ensureHostOnlyNet() (string, error) {
-	out, err := p.vbmOutput("list", "hostonlyifs")
-	if err != nil {
-		return "", err
-	}
-	if strings.Contains(out, p.cfg.HostOnlyNet) {
-		return p.cfg.HostOnlyNet, nil
-	}
-	created, err := p.vbmOutput("hostonlyif", "create")
-	if err != nil {
-		return "", fmt.Errorf("crear host-only: %w", err)
-	}
-	createdName := p.cfg.HostOnlyNet
-	if start := strings.Index(created, "'"); start >= 0 {
-		if end := strings.Index(created[start+1:], "'"); end >= 0 {
-			createdName = created[start+1 : start+1+end]
+func (p *Provisioner) StartHealthCheck(interval time.Duration) {
+	go func() {
+		ticker := time.NewTicker(interval)
+		for range ticker.C {
+			p.checkInstancesHealth()
 		}
-	}
-	if err := p.vbm("hostonlyif", "ipconfig", createdName, "--ip", "192.168.56.1", "--netmask", "255.255.255.0"); err != nil {
-		return "", fmt.Errorf("configurar host-only: %w", err)
-	}
-	return createdName, nil
+	}()
 }
 
-func (p *Provisioner) waitForIP(vmName string, timeout time.Duration) (string, error) {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		out, err := exec.Command(p.cfg.VBoxManage, "guestproperty", "get", vmName,
-			"/VirtualBox/GuestInfo/Net/0/V4/IP").Output()
-		if err == nil {
-			line := strings.TrimSpace(string(out))
-			if strings.HasPrefix(line, "Value:") {
-				ip := strings.TrimSpace(strings.TrimPrefix(line, "Value:"))
-				if ip != "" && ip != "0.0.0.0" {
-					return ip, nil
-				}
+func (p *Provisioner) checkInstancesHealth() {
+	instances, err := p.store.ListInstances()
+	if err != nil {
+		return
+	}
+	for _, inst := range instances {
+		if inst.Status == models.StatusRunning {
+			running, err := p.isVMRunning(inst.VMName)
+			if err != nil {
+				log.Printf("[health-check] Error verificando estado de VM %s: %v", inst.VMName, err)
+				continue
+			}
+			if !running {
+				log.Printf("[health-check] La VM %s está apagada.", inst.VMName)
+				inst.Status = models.StatusStopped
+				_ = p.store.UpdateInstance(inst)
+				_ = p.store.AddLog("WARN", fmt.Sprintf("La máquina virtual de la instancia %s se encuentra apagada o detenida", inst.DBName), inst.ID)
+			}
+		} else if inst.Status == models.StatusStopped {
+			running, err := p.isVMRunning(inst.VMName)
+			if err == nil && running {
+				inst.Status = models.StatusRunning
+				_ = p.store.UpdateInstance(inst)
+				_ = p.store.AddLog("OK", fmt.Sprintf("La máquina virtual de la instancia %s se ha iniciado nuevamente", inst.DBName), inst.ID)
 			}
 		}
-		time.Sleep(3 * time.Second)
 	}
-	return "", fmt.Errorf("timeout esperando IP de %s", vmName)
 }
 
-func simulatedIP(base string) string {
-	n, _ := rand.Int(rand.Reader, big.NewInt(200))
-	return fmt.Sprintf("%s.%d", base, n.Int64()+20)
+func (p *Provisioner) isVMRunning(vmName string) (bool, error) {
+	cmd := exec.Command(p.cfg.VBoxManage, "showvminfo", vmName, "--machinereadable")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		errStr := stderr.String() + stdout.String()
+		if strings.Contains(errStr, "could not find a registered virtual machine") {
+			return false, nil
+		}
+		return false, fmt.Errorf("%w: %s", err, errStr)
+	}
+	for _, line := range strings.Split(stdout.String(), "\n") {
+		if strings.HasPrefix(line, "VMState=") {
+			state := strings.Trim(strings.TrimPrefix(line, "VMState="), "\"\r\n")
+			return state == "running", nil
+		}
+	}
+	return false, nil
 }
+
+// ── Helpers ───────────────────────────────────────────────────────────────
 
 func defaultPort(e models.Engine) int {
 	if e == models.EngineMariaDB {
@@ -783,77 +714,4 @@ func GeneratePassword() string {
 	b := make([]byte, 9)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)[:12]
-}
-
-// StartHealthCheck inicia la verificación periódica de las máquinas virtuales.
-func (p *Provisioner) StartHealthCheck(interval time.Duration) {
-	go func() {
-		ticker := time.NewTicker(interval)
-		for range ticker.C {
-			p.checkInstancesHealth()
-		}
-	}()
-}
-
-// checkInstancesHealth revisa si las VMs de las instancias siguen corriendo.
-func (p *Provisioner) checkInstancesHealth() {
-	instances, err := p.store.ListInstances()
-	if err != nil {
-		return
-	}
-	for _, inst := range instances {
-		if inst.Status == models.StatusRunning {
-			if p.cfg.Simulated {
-				continue
-			}
-			running, err := p.isVMRunning(inst.VMName)
-			if err != nil {
-				log.Printf("[health-check] Error verificando estado de VM %s: %v", inst.VMName, err)
-				continue
-			}
-			if !running {
-				log.Printf("[health-check] La VM %s está apagada. Cambiando estado a 'apagada'.", inst.VMName)
-				inst.Status = models.StatusStopped
-				_ = p.store.UpdateInstance(inst)
-				_ = p.store.AddLog("WARN", fmt.Sprintf("La máquina virtual de la instancia %s se encuentra apagada o detenida", inst.DBName), inst.ID)
-			}
-		} else if inst.Status == models.StatusStopped {
-			if p.cfg.Simulated {
-				continue
-			}
-			running, err := p.isVMRunning(inst.VMName)
-			if err == nil && running {
-				log.Printf("[health-check] La VM %s volvió a ejecutarse. Cambiando estado a 'running'.", inst.VMName)
-				inst.Status = models.StatusRunning
-				_ = p.store.UpdateInstance(inst)
-				_ = p.store.AddLog("OK", fmt.Sprintf("La máquina virtual de la instancia %s se ha iniciado nuevamente", inst.DBName), inst.ID)
-			}
-		}
-	}
-}
-
-// isVMRunning verifica si la máquina virtual está corriendo en VirtualBox.
-func (p *Provisioner) isVMRunning(vmName string) (bool, error) {
-	cmd := exec.Command(p.cfg.VBoxManage, "showvminfo", vmName, "--machinereadable")
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		errStr := stderr.String()
-		outStr := stdout.String()
-		if strings.Contains(errStr, "could not find a registered virtual machine") ||
-			strings.Contains(outStr, "could not find a registered virtual machine") {
-			return false, nil
-		}
-		return false, fmt.Errorf("%w: %s", err, errStr)
-	}
-
-	lines := strings.Split(stdout.String(), "\n")
-	for _, line := range lines {
-		if strings.HasPrefix(line, "VMState=") {
-			state := strings.Trim(strings.TrimPrefix(line, "VMState="), "\"\r\n")
-			return state == "running", nil
-		}
-	}
-	return false, nil
 }

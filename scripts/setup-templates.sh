@@ -10,7 +10,8 @@
 set -euo pipefail
 
 VM_NET="vboxnet0"
-SSH_KEY="$HOME/.ssh/nimbus_id_rsa"
+SSH_KEY="$HOME/.ssh/id_rsa"
+TEMPLATE_USER="${NIMBUS_TEMPLATE_USER:-nimbus}"
 ISO_INDEX_URL="https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/"
 
 echo "=== NimbusDBaaS: Setup de plantillas VirtualBox ==="
@@ -111,6 +112,10 @@ echo "    # Habilitar bind-address en /etc/mysql/mariadb.conf.d/50-server.cnf �
 echo "    systemctl enable mariadb ssh"
 echo "    mkdir -p /root/.ssh && echo '$(cat ${SSH_KEY}.pub)' >> /root/.ssh/authorized_keys"
 echo "    chmod 700 /root/.ssh && chmod 600 /root/.ssh/authorized_keys"
+echo "    # Instalar Guest Additions dentro de la VM"
+echo "    apt install -y build-essential dkms linux-headers-\$(uname -r) virtualbox-guest-dkms virtualbox-guest-utils virtualbox-guest-x11"
+echo "    systemctl enable vboxservice"
+echo "    systemctl restart vboxservice"
 echo ""
 echo "  Para nimbus-pg-template:"
 echo "    apt update && apt install -y postgresql openssh-server"
@@ -119,6 +124,10 @@ echo "    # Editar /etc/postgresql/*/main/postgresql.conf → listen_addresses =
 echo "    systemctl enable postgresql ssh"
 echo "    mkdir -p /root/.ssh && echo '$(cat ${SSH_KEY}.pub)' >> /root/.ssh/authorized_keys"
 echo "    chmod 700 /root/.ssh && chmod 600 /root/.ssh/authorized_keys"
+echo "    # Instalar Guest Additions dentro de la VM"
+echo "    apt install -y build-essential dkms linux-headers-\$(uname -r) virtualbox-guest-dkms virtualbox-guest-utils virtualbox-guest-x11"
+echo "    systemctl enable vboxservice"
+echo "    systemctl restart vboxservice"
 echo ""
 echo "[7/7] Cuando ambas VMs estén listas, apagar las VMs y configurar los discos en modo multiconexión:"
 echo ""

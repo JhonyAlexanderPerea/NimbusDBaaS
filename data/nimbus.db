@@ -1,18 +1,17 @@
 {
   "instances": [
     {
-      "id": "8a4beee4-7b4f-4beb-81af-5c8efea9be71",
+      "id": "db0ebc28-bf7f-47ea-8a33-2b40621a193d",
       "db_name": "pruebamaria",
       "username": "admin",
-      "password": "150e57a7c3d3",
+      "password": "9a67bf498617",
       "engine": "mariadb",
-      "status": "error",
+      "status": "provisioning",
       "host": "",
       "port": 0,
-      "vm_name": "nimbus-mariadb-8a4beee4",
-      "created_at": "2026-05-21T18:35:03.9765737Z",
-      "access_cmd": "",
-      "error_msg": "preparar plantilla: no se pudo determinar el disco de la plantilla nimbus-mariadb-template"
+      "vm_name": "pruebamaria",
+      "created_at": "2026-05-24T04:11:24.3379672Z",
+      "access_cmd": ""
     }
   ],
   "logs": [
@@ -20,22 +19,44 @@
       "id": 1,
       "level": "INFO",
       "message": "Solicitud de creación de la base de datos pruebamaria con usuario admin en MariaDB",
-      "instance_id": "8a4beee4-7b4f-4beb-81af-5c8efea9be71",
-      "created_at": "2026-05-21T18:35:03.9781758Z"
+      "instance_id": "db0ebc28-bf7f-47ea-8a33-2b40621a193d",
+      "created_at": "2026-05-24T04:11:24.338473Z"
     },
     {
       "id": 2,
       "level": "INFO",
-      "message": "La plantilla nimbus-mariadb-template existe pero no tiene snapshot base; NimbusDBaaS lo creará",
-      "created_at": "2026-05-21T18:35:04.0416208Z"
+      "message": "Clonando plantilla nimbus-mariadb-template → pruebamaria (disco multiconexión)",
+      "instance_id": "db0ebc28-bf7f-47ea-8a33-2b40621a193d",
+      "created_at": "2026-05-24T04:11:24.4536098Z"
     },
     {
       "id": 3,
-      "level": "ERROR",
-      "message": "Error provisionando pruebamaria: preparar plantilla: no se pudo determinar el disco de la plantilla nimbus-mariadb-template",
-      "instance_id": "8a4beee4-7b4f-4beb-81af-5c8efea9be71",
-      "created_at": "2026-05-21T18:35:04.1333218Z"
+      "level": "INFO",
+      "message": "Iniciando VM pruebamaria",
+      "instance_id": "db0ebc28-bf7f-47ea-8a33-2b40621a193d",
+      "created_at": "2026-05-24T04:11:24.5011595Z"
+    },
+    {
+      "id": 4,
+      "level": "WARN",
+      "message": "guestproperty no devolvió IP para pruebamaria: timeout esperando IP host-only de pruebamaria",
+      "instance_id": "db0ebc28-bf7f-47ea-8a33-2b40621a193d",
+      "created_at": "2026-05-24T04:13:32.9170266Z"
+    },
+    {
+      "id": 5,
+      "level": "INFO",
+      "message": "Probando SSH en 192.168.10.11 (escaneo corto)",
+      "instance_id": "db0ebc28-bf7f-47ea-8a33-2b40621a193d",
+      "created_at": "2026-05-24T04:13:32.9175299Z"
+    },
+    {
+      "id": 6,
+      "level": "OK",
+      "message": "Encontrado SSH en 192.168.10.11",
+      "instance_id": "db0ebc28-bf7f-47ea-8a33-2b40621a193d",
+      "created_at": "2026-05-24T04:13:33.4594134Z"
     }
   ],
-  "log_seq": 3
+  "log_seq": 6
 }
