@@ -1,62 +1,455 @@
 {
   "instances": [
     {
-      "id": "db0ebc28-bf7f-47ea-8a33-2b40621a193d",
-      "db_name": "pruebamaria",
-      "username": "admin",
-      "password": "9a67bf498617",
+      "id": "8be9637c-da07-42d6-9aa3-8358350f3feb",
+      "db_name": "inventario",
+      "username": "jhony",
+      "password": "12004d358930",
       "engine": "mariadb",
-      "status": "provisioning",
-      "host": "",
-      "port": 0,
-      "vm_name": "pruebamaria",
-      "created_at": "2026-05-24T04:11:24.3379672Z",
-      "access_cmd": ""
+      "status": "running",
+      "host": "192.168.10.20",
+      "port": 3306,
+      "vm_name": "nimbus-mariadb-inventario",
+      "created_at": "2026-05-24T19:55:48.3720974Z",
+      "access_cmd": "mariadb -h 192.168.10.20 -u jhony -p12004d358930 inventario",
+      "sql_content": "CREATE DATABASE IF NOT EXISTS inventario;\r\n\r\nUSE inventario;\r\n\r\nCREATE TABLE usuarios (\r\n    id INT AUTO_INCREMENT PRIMARY KEY,\r\n    nombre VARCHAR(100) NOT NULL,\r\n    correo VARCHAR(120) UNIQUE NOT NULL,\r\n    password_hash VARCHAR(255) NOT NULL,\r\n    fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP\r\n);\r\n\r\nCREATE TABLE productos (\r\n    id INT AUTO_INCREMENT PRIMARY KEY,\r\n    nombre VARCHAR(150) NOT NULL,\r\n    descripcion TEXT,\r\n    precio DECIMAL(10,2) NOT NULL,\r\n    stock INT DEFAULT 0,\r\n    creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP\r\n);\r\n\r\nCREATE TABLE pedidos (\r\n    id INT AUTO_INCREMENT PRIMARY KEY,\r\n    usuario_id INT NOT NULL,\r\n    fecha_pedido TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\r\n    total DECIMAL(10,2) NOT NULL,\r\n    FOREIGN KEY (usuario_id) REFERENCES usuarios(id)\r\n        ON DELETE CASCADE\r\n);\r\n\r\nCREATE TABLE detalle_pedido (\r\n    id INT AUTO_INCREMENT PRIMARY KEY,\r\n    pedido_id INT NOT NULL,\r\n    producto_id INT NOT NULL,\r\n    cantidad INT NOT NULL,\r\n    subtotal DECIMAL(10,2) NOT NULL,\r\n    FOREIGN KEY (pedido_id) REFERENCES pedidos(id)\r\n        ON DELETE CASCADE,\r\n    FOREIGN KEY (producto_id) REFERENCES productos(id)\r\n);\r\n\r\nINSERT INTO usuarios (nombre, correo, password_hash)\r\nVALUES\r\n('admin', 'admin@local.com', 'admin123'),\r\n('usuario1', 'user1@local.com', 'user123');\r\n\r\nINSERT INTO productos (nombre, descripcion, precio, stock)\r\nVALUES\r\n('Teclado Mecánico', 'Teclado RGB switches blue', 250000, 15),\r\n('Mouse Gamer', 'Mouse óptico 7200 DPI', 120000, 20);"
+    },
+    {
+      "id": "f67da9ba-4dea-45fb-a7d1-92aa223d0f8e",
+      "db_name": "universidad",
+      "username": "jhony",
+      "password": "2b6f7093027d",
+      "engine": "postgresql",
+      "status": "running",
+      "host": "192.168.10.21",
+      "port": 5432,
+      "vm_name": "nimbus-postgresql-universidad",
+      "created_at": "2026-05-24T20:01:02.1903851Z",
+      "access_cmd": "psql -h 192.168.10.21 -U jhony -d universidad",
+      "sql_content": "CREATE DATABASE universidad;\r\n\r\n\\c universidad;\r\n\r\nCREATE TABLE estudiantes (\r\n    id SERIAL PRIMARY KEY,\r\n    nombre VARCHAR(120) NOT NULL,\r\n    correo VARCHAR(120) UNIQUE NOT NULL,\r\n    fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP\r\n);\r\n\r\nCREATE TABLE profesores (\r\n    id SERIAL PRIMARY KEY,\r\n    nombre VARCHAR(120) NOT NULL,\r\n    departamento VARCHAR(100)\r\n);\r\n\r\nCREATE TABLE cursos (\r\n    id SERIAL PRIMARY KEY,\r\n    nombre VARCHAR(120) NOT NULL,\r\n    creditos INT NOT NULL,\r\n    profesor_id INT,\r\n    FOREIGN KEY (profesor_id) REFERENCES profesores(id)\r\n        ON DELETE SET NULL\r\n);\r\n\r\nCREATE TABLE matriculas (\r\n    id SERIAL PRIMARY KEY,\r\n    estudiante_id INT NOT NULL,\r\n    curso_id INT NOT NULL,\r\n    fecha_matricula TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\r\n    nota_final NUMERIC(4,2),\r\n    FOREIGN KEY (estudiante_id) REFERENCES estudiantes(id)\r\n        ON DELETE CASCADE,\r\n    FOREIGN KEY (curso_id) REFERENCES cursos(id)\r\n        ON DELETE CASCADE\r\n);\r\n\r\nINSERT INTO profesores (nombre, departamento)\r\nVALUES\r\n('Carlos Ramirez', 'Ingeniería'),\r\n('Laura Gómez', 'Matemáticas');\r\n\r\nINSERT INTO estudiantes (nombre, correo)\r\nVALUES\r\n('Juan Pérez', 'juan@correo.com'),\r\n('Ana Torres', 'ana@correo.com');\r\n\r\nINSERT INTO cursos (nombre, creditos, profesor_id)\r\nVALUES\r\n('Bases de Datos', 4, 1),\r\n('Álgebra Lineal', 3, 2);"
+    },
+    {
+      "id": "6da85f85-c748-4dc3-81be-26cb97751a02",
+      "db_name": "inventario2",
+      "username": "jhony",
+      "password": "7ae3558d6bd5",
+      "engine": "mariadb",
+      "status": "running",
+      "host": "192.168.10.22",
+      "port": 3306,
+      "vm_name": "nimbus-mariadb-inventario2",
+      "created_at": "2026-05-24T20:06:13.0005304Z",
+      "access_cmd": "mariadb -h 192.168.10.22 -u jhony -p7ae3558d6bd5 inventario2",
+      "sql_content": "CREATE DATABASE IF NOT EXISTS inventario;\r\n\r\nUSE inventario;\r\n\r\nCREATE TABLE usuarios (\r\n    id INT AUTO_INCREMENT PRIMARY KEY,\r\n    nombre VARCHAR(100) NOT NULL,\r\n    correo VARCHAR(120) UNIQUE NOT NULL,\r\n    password_hash VARCHAR(255) NOT NULL,\r\n    fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP\r\n);\r\n\r\nCREATE TABLE productos (\r\n    id INT AUTO_INCREMENT PRIMARY KEY,\r\n    nombre VARCHAR(150) NOT NULL,\r\n    descripcion TEXT,\r\n    precio DECIMAL(10,2) NOT NULL,\r\n    stock INT DEFAULT 0,\r\n    creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP\r\n);\r\n\r\nCREATE TABLE pedidos (\r\n    id INT AUTO_INCREMENT PRIMARY KEY,\r\n    usuario_id INT NOT NULL,\r\n    fecha_pedido TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\r\n    total DECIMAL(10,2) NOT NULL,\r\n    FOREIGN KEY (usuario_id) REFERENCES usuarios(id)\r\n        ON DELETE CASCADE\r\n);\r\n\r\nCREATE TABLE detalle_pedido (\r\n    id INT AUTO_INCREMENT PRIMARY KEY,\r\n    pedido_id INT NOT NULL,\r\n    producto_id INT NOT NULL,\r\n    cantidad INT NOT NULL,\r\n    subtotal DECIMAL(10,2) NOT NULL,\r\n    FOREIGN KEY (pedido_id) REFERENCES pedidos(id)\r\n        ON DELETE CASCADE,\r\n    FOREIGN KEY (producto_id) REFERENCES productos(id)\r\n);\r\n\r\nINSERT INTO usuarios (nombre, correo, password_hash)\r\nVALUES\r\n('admin', 'admin@local.com', 'admin123'),\r\n('usuario1', 'user1@local.com', 'user123');\r\n\r\nINSERT INTO productos (nombre, descripcion, precio, stock)\r\nVALUES\r\n('Teclado Mecánico', 'Teclado RGB switches blue', 250000, 15),\r\n('Mouse Gamer', 'Mouse óptico 7200 DPI', 120000, 20);"
+    },
+    {
+      "id": "3e774e12-2ccc-44f4-9b08-b902e34ae091",
+      "db_name": "universidad2",
+      "username": "jhony",
+      "password": "d516c6458442",
+      "engine": "postgresql",
+      "status": "running",
+      "host": "192.168.10.23",
+      "port": 5432,
+      "vm_name": "nimbus-postgresql-universidad2",
+      "created_at": "2026-05-24T20:06:29.0214311Z",
+      "access_cmd": "psql -h 192.168.10.23 -U jhony -d universidad2",
+      "sql_content": "CREATE DATABASE universidad;\r\n\r\n\\c universidad;\r\n\r\nCREATE TABLE estudiantes (\r\n    id SERIAL PRIMARY KEY,\r\n    nombre VARCHAR(120) NOT NULL,\r\n    correo VARCHAR(120) UNIQUE NOT NULL,\r\n    fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP\r\n);\r\n\r\nCREATE TABLE profesores (\r\n    id SERIAL PRIMARY KEY,\r\n    nombre VARCHAR(120) NOT NULL,\r\n    departamento VARCHAR(100)\r\n);\r\n\r\nCREATE TABLE cursos (\r\n    id SERIAL PRIMARY KEY,\r\n    nombre VARCHAR(120) NOT NULL,\r\n    creditos INT NOT NULL,\r\n    profesor_id INT,\r\n    FOREIGN KEY (profesor_id) REFERENCES profesores(id)\r\n        ON DELETE SET NULL\r\n);\r\n\r\nCREATE TABLE matriculas (\r\n    id SERIAL PRIMARY KEY,\r\n    estudiante_id INT NOT NULL,\r\n    curso_id INT NOT NULL,\r\n    fecha_matricula TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\r\n    nota_final NUMERIC(4,2),\r\n    FOREIGN KEY (estudiante_id) REFERENCES estudiantes(id)\r\n        ON DELETE CASCADE,\r\n    FOREIGN KEY (curso_id) REFERENCES cursos(id)\r\n        ON DELETE CASCADE\r\n);\r\n\r\nINSERT INTO profesores (nombre, departamento)\r\nVALUES\r\n('Carlos Ramirez', 'Ingeniería'),\r\n('Laura Gómez', 'Matemáticas');\r\n\r\nINSERT INTO estudiantes (nombre, correo)\r\nVALUES\r\n('Juan Pérez', 'juan@correo.com'),\r\n('Ana Torres', 'ana@correo.com');\r\n\r\nINSERT INTO cursos (nombre, creditos, profesor_id)\r\nVALUES\r\n('Bases de Datos', 4, 1),\r\n('Álgebra Lineal', 3, 2);"
     }
   ],
   "logs": [
     {
       "id": 1,
       "level": "INFO",
-      "message": "Solicitud de creación de la base de datos pruebamaria con usuario admin en MariaDB",
-      "instance_id": "db0ebc28-bf7f-47ea-8a33-2b40621a193d",
-      "created_at": "2026-05-24T04:11:24.338473Z"
+      "message": "Solicitud de creación de la base de datos inventario con usuario jhony en MariaDB",
+      "instance_id": "8be9637c-da07-42d6-9aa3-8358350f3feb",
+      "created_at": "2026-05-24T19:55:48.3755177Z"
     },
     {
       "id": 2,
       "level": "INFO",
-      "message": "Clonando plantilla nimbus-mariadb-template → pruebamaria (disco multiconexión)",
-      "instance_id": "db0ebc28-bf7f-47ea-8a33-2b40621a193d",
-      "created_at": "2026-05-24T04:11:24.4536098Z"
+      "message": "Reserva temporal de IP 192.168.10.20 para inventario",
+      "instance_id": "8be9637c-da07-42d6-9aa3-8358350f3feb",
+      "created_at": "2026-05-24T19:55:48.792434Z"
     },
     {
       "id": 3,
       "level": "INFO",
-      "message": "Iniciando VM pruebamaria",
-      "instance_id": "db0ebc28-bf7f-47ea-8a33-2b40621a193d",
-      "created_at": "2026-05-24T04:11:24.5011595Z"
+      "message": "Clonando plantilla nimbus-mariadb-template → nimbus-mariadb-inventario (linked clone)",
+      "instance_id": "8be9637c-da07-42d6-9aa3-8358350f3feb",
+      "created_at": "2026-05-24T19:55:48.7931738Z"
     },
     {
       "id": 4,
-      "level": "WARN",
-      "message": "guestproperty no devolvió IP para pruebamaria: timeout esperando IP host-only de pruebamaria",
-      "instance_id": "db0ebc28-bf7f-47ea-8a33-2b40621a193d",
-      "created_at": "2026-05-24T04:13:32.9170266Z"
+      "level": "INFO",
+      "message": "Iniciando VM nimbus-mariadb-inventario",
+      "instance_id": "8be9637c-da07-42d6-9aa3-8358350f3feb",
+      "created_at": "2026-05-24T19:55:48.8421438Z"
     },
     {
       "id": 5,
       "level": "INFO",
-      "message": "Probando SSH en 192.168.10.11 (escaneo corto)",
-      "instance_id": "db0ebc28-bf7f-47ea-8a33-2b40621a193d",
-      "created_at": "2026-05-24T04:13:32.9175299Z"
+      "message": "Esperando SSH inicial en 192.168.10.10",
+      "instance_id": "8be9637c-da07-42d6-9aa3-8358350f3feb",
+      "created_at": "2026-05-24T19:55:52.3620004Z"
     },
     {
       "id": 6,
       "level": "OK",
-      "message": "Encontrado SSH en 192.168.10.11",
-      "instance_id": "db0ebc28-bf7f-47ea-8a33-2b40621a193d",
-      "created_at": "2026-05-24T04:13:33.4594134Z"
+      "message": "SSH disponible en 192.168.10.10",
+      "instance_id": "8be9637c-da07-42d6-9aa3-8358350f3feb",
+      "created_at": "2026-05-24T19:56:31.7736648Z"
+    },
+    {
+      "id": 7,
+      "level": "INFO",
+      "message": "Reconfigurando IP: 192.168.10.10 → 192.168.10.20",
+      "instance_id": "8be9637c-da07-42d6-9aa3-8358350f3feb",
+      "created_at": "2026-05-24T19:56:31.7736648Z"
+    },
+    {
+      "id": 8,
+      "level": "INFO",
+      "message": "Esperando SSH en nueva IP 192.168.10.20",
+      "instance_id": "8be9637c-da07-42d6-9aa3-8358350f3feb",
+      "created_at": "2026-05-24T19:59:01.8877085Z"
+    },
+    {
+      "id": 9,
+      "level": "OK",
+      "message": "SSH disponible en 192.168.10.20",
+      "instance_id": "8be9637c-da07-42d6-9aa3-8358350f3feb",
+      "created_at": "2026-05-24T19:59:01.9859314Z"
+    },
+    {
+      "id": 10,
+      "level": "OK",
+      "message": "Creación de la MV con MariaDB para la ejecución de la base de datos inventario",
+      "instance_id": "8be9637c-da07-42d6-9aa3-8358350f3feb",
+      "created_at": "2026-05-24T19:59:01.9859314Z"
+    },
+    {
+      "id": 11,
+      "level": "INFO",
+      "message": "Conectando por SSH a 192.168.10.20",
+      "instance_id": "8be9637c-da07-42d6-9aa3-8358350f3feb",
+      "created_at": "2026-05-24T19:59:01.9864646Z"
+    },
+    {
+      "id": 12,
+      "level": "INFO",
+      "message": "Ejecutando archivo SQL en inventario",
+      "instance_id": "8be9637c-da07-42d6-9aa3-8358350f3feb",
+      "created_at": "2026-05-24T19:59:02.1453235Z"
+    },
+    {
+      "id": 13,
+      "level": "OK",
+      "message": "Instancia inventario lista — host asignado 192.168.10.20",
+      "instance_id": "8be9637c-da07-42d6-9aa3-8358350f3feb",
+      "created_at": "2026-05-24T19:59:02.6343594Z"
+    },
+    {
+      "id": 14,
+      "level": "OK",
+      "message": "Reserva de IP liberada: 192.168.10.20",
+      "instance_id": "8be9637c-da07-42d6-9aa3-8358350f3feb",
+      "created_at": "2026-05-24T19:59:02.634923Z"
+    },
+    {
+      "id": 15,
+      "level": "INFO",
+      "message": "Solicitud de creación de la base de datos universidad con usuario jhony en PostgreSQL",
+      "instance_id": "f67da9ba-4dea-45fb-a7d1-92aa223d0f8e",
+      "created_at": "2026-05-24T20:01:02.1917217Z"
+    },
+    {
+      "id": 16,
+      "level": "INFO",
+      "message": "Reserva temporal de IP 192.168.10.21 para universidad",
+      "instance_id": "f67da9ba-4dea-45fb-a7d1-92aa223d0f8e",
+      "created_at": "2026-05-24T20:01:02.2928893Z"
+    },
+    {
+      "id": 17,
+      "level": "INFO",
+      "message": "Clonando plantilla nimbus-pg-template → nimbus-postgresql-universidad (linked clone)",
+      "instance_id": "f67da9ba-4dea-45fb-a7d1-92aa223d0f8e",
+      "created_at": "2026-05-24T20:01:02.2928893Z"
+    },
+    {
+      "id": 18,
+      "level": "INFO",
+      "message": "Iniciando VM nimbus-postgresql-universidad",
+      "instance_id": "f67da9ba-4dea-45fb-a7d1-92aa223d0f8e",
+      "created_at": "2026-05-24T20:01:02.3486768Z"
+    },
+    {
+      "id": 19,
+      "level": "INFO",
+      "message": "Esperando SSH inicial en 192.168.10.11",
+      "instance_id": "f67da9ba-4dea-45fb-a7d1-92aa223d0f8e",
+      "created_at": "2026-05-24T20:01:05.9824741Z"
+    },
+    {
+      "id": 20,
+      "level": "OK",
+      "message": "SSH disponible en 192.168.10.11",
+      "instance_id": "f67da9ba-4dea-45fb-a7d1-92aa223d0f8e",
+      "created_at": "2026-05-24T20:02:37.521619Z"
+    },
+    {
+      "id": 21,
+      "level": "INFO",
+      "message": "Reconfigurando IP: 192.168.10.11 → 192.168.10.21",
+      "instance_id": "f67da9ba-4dea-45fb-a7d1-92aa223d0f8e",
+      "created_at": "2026-05-24T20:02:37.5222942Z"
+    },
+    {
+      "id": 22,
+      "level": "INFO",
+      "message": "Esperando SSH en nueva IP 192.168.10.21",
+      "instance_id": "f67da9ba-4dea-45fb-a7d1-92aa223d0f8e",
+      "created_at": "2026-05-24T20:05:07.6532601Z"
+    },
+    {
+      "id": 23,
+      "level": "OK",
+      "message": "SSH disponible en 192.168.10.21",
+      "instance_id": "f67da9ba-4dea-45fb-a7d1-92aa223d0f8e",
+      "created_at": "2026-05-24T20:05:20.7595616Z"
+    },
+    {
+      "id": 24,
+      "level": "OK",
+      "message": "Creación de la MV con PostgreSQL para la ejecución de la base de datos universidad",
+      "instance_id": "f67da9ba-4dea-45fb-a7d1-92aa223d0f8e",
+      "created_at": "2026-05-24T20:05:20.7600663Z"
+    },
+    {
+      "id": 25,
+      "level": "INFO",
+      "message": "Conectando por SSH a 192.168.10.21",
+      "instance_id": "f67da9ba-4dea-45fb-a7d1-92aa223d0f8e",
+      "created_at": "2026-05-24T20:05:20.7606889Z"
+    },
+    {
+      "id": 26,
+      "level": "INFO",
+      "message": "Ejecutando archivo SQL en universidad",
+      "instance_id": "f67da9ba-4dea-45fb-a7d1-92aa223d0f8e",
+      "created_at": "2026-05-24T20:05:21.8035257Z"
+    },
+    {
+      "id": 27,
+      "level": "OK",
+      "message": "Instancia universidad lista — host asignado 192.168.10.21",
+      "instance_id": "f67da9ba-4dea-45fb-a7d1-92aa223d0f8e",
+      "created_at": "2026-05-24T20:05:22.2201165Z"
+    },
+    {
+      "id": 28,
+      "level": "OK",
+      "message": "Reserva de IP liberada: 192.168.10.21",
+      "instance_id": "f67da9ba-4dea-45fb-a7d1-92aa223d0f8e",
+      "created_at": "2026-05-24T20:05:22.220745Z"
+    },
+    {
+      "id": 29,
+      "level": "INFO",
+      "message": "Solicitud de creación de la base de datos inventario2 con usuario jhony en MariaDB",
+      "instance_id": "6da85f85-c748-4dc3-81be-26cb97751a02",
+      "created_at": "2026-05-24T20:06:13.0058173Z"
+    },
+    {
+      "id": 30,
+      "level": "INFO",
+      "message": "Reserva temporal de IP 192.168.10.22 para inventario2",
+      "instance_id": "6da85f85-c748-4dc3-81be-26cb97751a02",
+      "created_at": "2026-05-24T20:06:13.2925342Z"
+    },
+    {
+      "id": 31,
+      "level": "INFO",
+      "message": "Clonando plantilla nimbus-mariadb-template → nimbus-mariadb-inventario2 (linked clone)",
+      "instance_id": "6da85f85-c748-4dc3-81be-26cb97751a02",
+      "created_at": "2026-05-24T20:06:13.2937902Z"
+    },
+    {
+      "id": 32,
+      "level": "INFO",
+      "message": "Iniciando VM nimbus-mariadb-inventario2",
+      "instance_id": "6da85f85-c748-4dc3-81be-26cb97751a02",
+      "created_at": "2026-05-24T20:06:13.3439173Z"
+    },
+    {
+      "id": 33,
+      "level": "INFO",
+      "message": "Esperando SSH inicial en 192.168.10.10",
+      "instance_id": "6da85f85-c748-4dc3-81be-26cb97751a02",
+      "created_at": "2026-05-24T20:06:16.8281338Z"
+    },
+    {
+      "id": 34,
+      "level": "INFO",
+      "message": "Solicitud de creación de la base de datos universidad2 con usuario jhony en PostgreSQL",
+      "instance_id": "3e774e12-2ccc-44f4-9b08-b902e34ae091",
+      "created_at": "2026-05-24T20:06:29.0236633Z"
+    },
+    {
+      "id": 35,
+      "level": "INFO",
+      "message": "Reserva temporal de IP 192.168.10.23 para universidad2",
+      "instance_id": "3e774e12-2ccc-44f4-9b08-b902e34ae091",
+      "created_at": "2026-05-24T20:06:29.293456Z"
+    },
+    {
+      "id": 36,
+      "level": "INFO",
+      "message": "Clonando plantilla nimbus-pg-template → nimbus-postgresql-universidad2 (linked clone)",
+      "instance_id": "3e774e12-2ccc-44f4-9b08-b902e34ae091",
+      "created_at": "2026-05-24T20:06:29.2938827Z"
+    },
+    {
+      "id": 37,
+      "level": "INFO",
+      "message": "Iniciando VM nimbus-postgresql-universidad2",
+      "instance_id": "3e774e12-2ccc-44f4-9b08-b902e34ae091",
+      "created_at": "2026-05-24T20:06:29.3403863Z"
+    },
+    {
+      "id": 38,
+      "level": "INFO",
+      "message": "Esperando SSH inicial en 192.168.10.11",
+      "instance_id": "3e774e12-2ccc-44f4-9b08-b902e34ae091",
+      "created_at": "2026-05-24T20:06:32.7936619Z"
+    },
+    {
+      "id": 39,
+      "level": "OK",
+      "message": "SSH disponible en 192.168.10.10",
+      "instance_id": "6da85f85-c748-4dc3-81be-26cb97751a02",
+      "created_at": "2026-05-24T20:06:56.3188132Z"
+    },
+    {
+      "id": 40,
+      "level": "INFO",
+      "message": "Reconfigurando IP: 192.168.10.10 → 192.168.10.22",
+      "instance_id": "6da85f85-c748-4dc3-81be-26cb97751a02",
+      "created_at": "2026-05-24T20:06:56.3215752Z"
+    },
+    {
+      "id": 41,
+      "level": "OK",
+      "message": "SSH disponible en 192.168.10.11",
+      "instance_id": "3e774e12-2ccc-44f4-9b08-b902e34ae091",
+      "created_at": "2026-05-24T20:07:38.3172569Z"
+    },
+    {
+      "id": 42,
+      "level": "INFO",
+      "message": "Reconfigurando IP: 192.168.10.11 → 192.168.10.23",
+      "instance_id": "3e774e12-2ccc-44f4-9b08-b902e34ae091",
+      "created_at": "2026-05-24T20:07:38.3193634Z"
+    },
+    {
+      "id": 43,
+      "level": "INFO",
+      "message": "Esperando SSH en nueva IP 192.168.10.22",
+      "instance_id": "6da85f85-c748-4dc3-81be-26cb97751a02",
+      "created_at": "2026-05-24T20:09:26.4666788Z"
+    },
+    {
+      "id": 44,
+      "level": "OK",
+      "message": "SSH disponible en 192.168.10.22",
+      "instance_id": "6da85f85-c748-4dc3-81be-26cb97751a02",
+      "created_at": "2026-05-24T20:09:26.6003753Z"
+    },
+    {
+      "id": 45,
+      "level": "OK",
+      "message": "Creación de la MV con MariaDB para la ejecución de la base de datos inventario2",
+      "instance_id": "6da85f85-c748-4dc3-81be-26cb97751a02",
+      "created_at": "2026-05-24T20:09:26.6026081Z"
+    },
+    {
+      "id": 46,
+      "level": "INFO",
+      "message": "Conectando por SSH a 192.168.10.22",
+      "instance_id": "6da85f85-c748-4dc3-81be-26cb97751a02",
+      "created_at": "2026-05-24T20:09:26.6099733Z"
+    },
+    {
+      "id": 47,
+      "level": "INFO",
+      "message": "Ejecutando archivo SQL en inventario2",
+      "instance_id": "6da85f85-c748-4dc3-81be-26cb97751a02",
+      "created_at": "2026-05-24T20:09:26.7735707Z"
+    },
+    {
+      "id": 48,
+      "level": "OK",
+      "message": "Instancia inventario2 lista — host asignado 192.168.10.22",
+      "instance_id": "6da85f85-c748-4dc3-81be-26cb97751a02",
+      "created_at": "2026-05-24T20:09:27.2662118Z"
+    },
+    {
+      "id": 49,
+      "level": "OK",
+      "message": "Reserva de IP liberada: 192.168.10.22",
+      "instance_id": "6da85f85-c748-4dc3-81be-26cb97751a02",
+      "created_at": "2026-05-24T20:09:27.267244Z"
+    },
+    {
+      "id": 50,
+      "level": "INFO",
+      "message": "Esperando SSH en nueva IP 192.168.10.23",
+      "instance_id": "3e774e12-2ccc-44f4-9b08-b902e34ae091",
+      "created_at": "2026-05-24T20:10:08.4554393Z"
+    },
+    {
+      "id": 51,
+      "level": "OK",
+      "message": "SSH disponible en 192.168.10.23",
+      "instance_id": "3e774e12-2ccc-44f4-9b08-b902e34ae091",
+      "created_at": "2026-05-24T20:10:21.5868522Z"
+    },
+    {
+      "id": 52,
+      "level": "OK",
+      "message": "Creación de la MV con PostgreSQL para la ejecución de la base de datos universidad2",
+      "instance_id": "3e774e12-2ccc-44f4-9b08-b902e34ae091",
+      "created_at": "2026-05-24T20:10:21.5878577Z"
+    },
+    {
+      "id": 53,
+      "level": "INFO",
+      "message": "Conectando por SSH a 192.168.10.23",
+      "instance_id": "3e774e12-2ccc-44f4-9b08-b902e34ae091",
+      "created_at": "2026-05-24T20:10:21.6002935Z"
+    },
+    {
+      "id": 54,
+      "level": "INFO",
+      "message": "Ejecutando archivo SQL en universidad2",
+      "instance_id": "3e774e12-2ccc-44f4-9b08-b902e34ae091",
+      "created_at": "2026-05-24T20:10:22.7025864Z"
+    },
+    {
+      "id": 55,
+      "level": "OK",
+      "message": "Instancia universidad2 lista — host asignado 192.168.10.23",
+      "instance_id": "3e774e12-2ccc-44f4-9b08-b902e34ae091",
+      "created_at": "2026-05-24T20:10:23.1311367Z"
+    },
+    {
+      "id": 56,
+      "level": "OK",
+      "message": "Reserva de IP liberada: 192.168.10.23",
+      "instance_id": "3e774e12-2ccc-44f4-9b08-b902e34ae091",
+      "created_at": "2026-05-24T20:10:23.1402126Z"
     }
   ],
-  "log_seq": 6
+  "log_seq": 56
 }

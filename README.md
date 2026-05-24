@@ -80,7 +80,7 @@ El sistema permite a los usuarios:
 | **Provisioner** | Go + VBoxManage CLI | Clona VMs, asigna red, lanza SSH |
 | **Store** | SQLite (`go-sqlite3`) | Persiste instancias y logs |
 | **Frontend** | HTML + JS (Vanilla) | SPA fiel al mockup, polling automático |
-| **VMs plantilla** | Debian 12 + MariaDB/PostgreSQL | Base inmutable por motor, preparada con snapshot `base` y disco `multiattach` |
+| **VMs plantilla** | Debian 12 + MariaDB/PostgreSQL | Base inmutable por motor, preparada con snapshot `base` para linked clones |
 
 ---
 
@@ -185,7 +185,7 @@ El script:
 1. Genera el par de llaves SSH en `~/.ssh/nimbus_id_rsa`.
 2. Crea el adaptador host-only `vboxnet0`.
 3. Crea dos VMs base distintas, una por motor.
-4. Deja indicado el snapshot `base` y el disco principal en modo `multiattach`.
+4. Deja indicado el snapshot `base` para clonar con `clonevm --snapshot base --options link`.
 
 La aplicación también puede bootstrappear automáticamente la plantilla faltante si no existe en VirtualBox, descargando la ISO de Debian y dejando lista la VM base antes de clonar.
 
@@ -244,8 +244,7 @@ VBoxManage controlvm nimbus-pg-template poweroff
 | `NIMBUS_TEMPLATE_SNAPSHOT` | `base` | Snapshot usado como origen del linked clone |
 | `NIMBUS_TEMPLATE_ISO` | `~/Downloads/debian-13.4.0-amd64-netinst.iso` | Ruta local de la ISO Debian descargada automáticamente |
 | `NIMBUS_TEMPLATE_ISO_URL` | `https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/` | URL base o ISO directa usada para descargar Debian si falta |
-| `NIMBUS_TEMPLATE_USER` | `nimbus` | Usuario creado durante la instalación unattended |
-| `NIMBUS_TEMPLATE_PASSWORD` | `nimbus-vm` | Contraseña usada para el bootstrap de la plantilla |
+| `NIMBUS_TEMPLATE_USER` | `root` | Usuario SSH usado por el provisioner |
 | `NIMBUS_HOST_ONLY_NET` | `vboxnet0` | Nombre del adaptador host-only |
 | `NIMBUS_SSH_KEY` | `~/.ssh/nimbus_id_rsa` | Ruta a la llave privada SSH |
 | `NIMBUS_BASE_IP` | `192.168.56` | Prefijo de red para IPs simuladas |

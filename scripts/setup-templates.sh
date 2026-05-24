@@ -1,142 +1,187 @@
 #!/usr/bin/env bash
 # =============================================================================
 # NimbusDBaaS – Setup de plantillas VirtualBox
-# =============================================================================
-# Este script documenta los pasos para crear las VMs plantilla de MariaDB y
-# PostgreSQL que el servicio usará como base para clonar nuevas instancias.
-#
-# Ejecutar una sola vez en el host donde corra NimbusDBaaS.
+# Ejecutar UNA SOLA VEZ en el host Windows (Git Bash / WSL / PowerShell no aplica)
+# Para Windows, ejecutar los comandos VBoxManage en PowerShell manualmente.
 # =============================================================================
 set -euo pipefail
 
-VM_NET="vboxnet0"
+# ── Configuración ──────────────────────────────────────────────────────────
+MARIADB_TEMPLATE="nimbus-mariadb-template"
+PG_TEMPLATE="nimbus-pg-template"
+HOST_ONLY_ADAPTER="VirtualBox Host-Only Ethernet Adapter"   # Nombre en Windows
+HOST_ONLY_IP="192.168.10.1"
+MARIADB_IP="192.168.10.10"
+PG_IP="192.168.10.11"
 SSH_KEY="$HOME/.ssh/id_rsa"
-TEMPLATE_USER="${NIMBUS_TEMPLATE_USER:-nimbus}"
-ISO_INDEX_URL="https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/"
+SNAPSHOT_NAME="base"
 
-echo "=== NimbusDBaaS: Setup de plantillas VirtualBox ==="
+echo "=================================================="
+echo "  NimbusDBaaS — Setup de plantillas VirtualBox"
+echo "=================================================="
+echo ""
 
-# ── 0. Generar par de llaves SSH ───────────────────────────────────────────
+# ── 0. Verificar llave SSH ─────────────────────────────────────────────────
+echo "[1/4] Verificando llave SSH en $SSH_KEY …"
 if [ ! -f "$SSH_KEY" ]; then
-  echo "[1/7] Generando par de llaves SSH para el servicio…"
+  echo "      No encontrada. Generando par de llaves RSA…"
   mkdir -p "$HOME/.ssh"
   ssh-keygen -t rsa -b 4096 -f "$SSH_KEY" -N "" -C "nimbus-dbaas"
-  echo "      Llave pública: ${SSH_KEY}.pub"
+  echo "      ✓ Llave generada: $SSH_KEY"
 else
-  echo "[1/7] Llave SSH ya existe: $SSH_KEY"
+  echo "      ✓ Llave ya existe: $SSH_KEY"
 fi
+PUB_KEY=$(cat "${SSH_KEY}.pub")
+echo ""
+echo "  ╔══════════════════════════════════════════════════════════════╗"
+echo "  ║  LLAVE PÚBLICA (copia esto en cada VM → /root/.ssh/authorized_keys) ║"
+echo "  ╚══════════════════════════════════════════════════════════════╝"
+echo "  $PUB_KEY"
+echo ""
 
-# ── 1. Crear adaptador host-only ───────────────────────────────────────────
-echo "[2/7] Verificando adaptador host-only '$VM_NET'…"
-if ! VBoxManage list hostonlyifs | grep -q "Name:.*$VM_NET"; then
-  VBoxManage hostonlyif create
-  VBoxManage hostonlyif ipconfig "$VM_NET" --ip 192.168.56.1 --netmask 255.255.255.0
-  echo "      Adaptador $VM_NET creado."
+# ── 1. Verificar adaptador Host-Only ──────────────────────────────────────
+echo "[2/4] Verificando adaptador Host-Only…"
+if VBoxManage list hostonlyifs | grep -q "192.168.10.1"; then
+  echo "      ✓ Red 192.168.10.0/24 ya configurada"
 else
-  echo "      Adaptador $VM_NET ya existe."
+  echo "      Configurando adaptador host-only con IP $HOST_ONLY_IP…"
+  # En Windows el adaptador ya existe, solo hay que configurarlo
+  VBoxManage hostonlyif ipconfig "$HOST_ONLY_ADAPTER" \
+    --ip "$HOST_ONLY_IP" --netmask 255.255.255.0 2>/dev/null || \
+  echo "      ⚠ Configura manualmente en VirtualBox > Archivo > Administrador de red de anfitrión"
 fi
+echo ""
 
-# ── 2. Descargar ISO Debian ────────────────────────────────────────────────
-ISO_PATH="$HOME/Downloads/debian-13.4.0-amd64-netinst.iso"
-if [ ! -f "$ISO_PATH" ]; then
-  echo "[3/7] Resolviendo ISO Debian actual…"
-  mkdir -p "$HOME/Downloads"
-  ISO_FILE=$(curl -fsSL "$ISO_INDEX_URL" | grep -oE 'debian-[0-9.]+-amd64-netinst\.iso' | head -n1)
-  curl -L -o "$ISO_PATH" "${ISO_INDEX_URL}${ISO_FILE}"
-else
-  echo "[3/7] ISO Debian ya descargada: $ISO_PATH"
-fi
+# ── 2. Verificar plantillas ────────────────────────────────────────────────
+echo "[3/4] Verificando plantillas en VirtualBox…"
 
-# Obtener el directorio por defecto de las VMs de VirtualBox
-if VBOX_FOLDER=$(VBoxManage list systemproperties | grep "Default machine folder:" | cut -d: -f2- | sed 's/^[ \t]*//;s/[ \t]*$//'); then
-  # Reemplazar contrabarra por barra para bash
-  VBOX_FOLDER="${VBOX_FOLDER//\\//}"
-else
-  VBOX_FOLDER="$HOME/VirtualBox VMs"
-fi
-
-# ── Helper: create_template <name> ────────────────────────────────────────
-create_template() {
+check_template() {
   local NAME="$1"
-  local MEM=512  # MB
+  local IP="$2"
+  local ENGINE="$3"
 
   echo ""
-  echo "=== Creando plantilla: $NAME ==="
+  echo "  ┌─ Plantilla: $NAME ─────────────────────────────"
+  if VBoxManage list vms | grep -q "\"$NAME\""; then
+    echo "  │  ✓ VM existe en VirtualBox"
 
-  # Crear VM
-  VBoxManage createvm --name "$NAME" --ostype Debian_64 --register
+    # Verificar snapshot
+    if VBoxManage snapshot "$NAME" list --machinereadable 2>/dev/null | grep -q "SnapshotName=\"$SNAPSHOT_NAME\""; then
+      echo "  │  ✓ Snapshot '$SNAPSHOT_NAME' existe"
+    else
+      echo "  │  ✗ Falta snapshot '$SNAPSHOT_NAME'"
+      echo "  │    Crea el snapshot con la VM APAGADA:"
+      echo "  │    VBoxManage snapshot \"$NAME\" take \"$SNAPSHOT_NAME\""
+    fi
 
-  # Configurar hardware
-  VBoxManage modifyvm "$NAME" \
-    --memory "$MEM" --cpus 1 \
-    --nic1 hostonly --hostonlyadapter1 "$VM_NET" \
-    --audio none --usb off
-
-  # Crear disco principal (8 GB)
-  local DISK="${VBOX_FOLDER}/${NAME}/${NAME}.vdi"
-  VBoxManage createmedium disk --filename "$DISK" --size 8192 --format VDI
-
-  # Controlador SATA
-  VBoxManage storagectl "$NAME" --name "SATA" --add sata --controller IntelAhci
-  VBoxManage storageattach "$NAME" --storagectl "SATA" --port 0 --device 0 --type hdd --medium "$DISK"
-
-  # ISO de instalación
-  VBoxManage storagectl "$NAME" --name "IDE" --add ide
-  VBoxManage storageattach "$NAME" --storagectl "IDE" --port 0 --device 0 --type dvddrive --medium "$ISO_PATH"
-
-  echo ""
-  echo ">>> Inicia la VM '$NAME' manualmente, instala Debian (CLI, sin escritorio),"
-  echo "    configura SSH con la llave pública en /root/.ssh/authorized_keys:"
-  echo ""
-  cat "${SSH_KEY}.pub"
-  echo ""
-  echo "    Luego sigue con el script post-install correspondiente."
+    echo "  │  ✓ Arquitectura correcta: snapshot '$SNAPSHOT_NAME' + clonevm --options link"
+  else
+    echo "  │  ✗ VM NO existe en VirtualBox"
+    echo "  │"
+    echo "  │  Pasos para crear la plantilla $NAME:"
+    echo "  │"
+    echo "  │  1. Crear VM en VirtualBox:"
+    echo "  │     - Nombre: $NAME"
+    echo "  │     - Tipo: Linux, Debian (64-bit)"
+    echo "  │     - RAM: 1024 MB"
+    echo "  │     - Disco: 10 GB (VDI, dinámico)"
+    echo "  │     - Red adaptador 1: NAT"
+    echo "  │     - Red adaptador 2: Host-Only → $HOST_ONLY_ADAPTER"
+    echo "  │"
+    echo "  │  2. Instalar Debian 13 (CLI, sin escritorio)"
+    echo "  │     - Si falla el mirror durante la instalación, omítelo"
+    echo "  │     - Después corrige /etc/apt/sources.list:"
+    echo "  │       deb http://deb.debian.org/debian trixie main non-free-firmware"
+    echo "  │       deb http://security.debian.org/debian-security trixie-security main non-free-firmware"
+    echo "  │"
+    echo "  │  3. Dentro de la VM (como root):"
+    echo "  │"
+    if [ "$ENGINE" = "mariadb" ]; then
+      echo "  │     # Configurar IP fija"
+      echo "  │     # En /etc/network/interfaces agregar para enp0s8 (Host-Only):"
+      echo "  │     auto enp0s8"
+      echo "  │     iface enp0s8 inet static"
+      echo "  │       address $IP"
+      echo "  │       netmask 255.255.255.0"
+      echo "  │"
+      echo "  │     systemctl restart networking"
+      echo "  │"
+      echo "  │     # Instalar servicios"
+      echo "  │     apt update && apt install -y openssh-server mariadb-server"
+      echo "  │"
+      echo "  │     # Configurar MariaDB para acceso remoto"
+      echo "  │     sed -i 's/bind-address.*/bind-address = 0.0.0.0/' /etc/mysql/mariadb.conf.d/50-server.cnf"
+      echo "  │     systemctl enable mariadb"
+      echo "  │     systemctl restart mariadb"
+    else
+      echo "  │     # Configurar IP fija"
+      echo "  │     # En /etc/network/interfaces agregar para enp0s8 (Host-Only):"
+      echo "  │     auto enp0s8"
+      echo "  │     iface enp0s8 inet static"
+      echo "  │       address $IP"
+      echo "  │       netmask 255.255.255.0"
+      echo "  │"
+      echo "  │     systemctl restart networking"
+      echo "  │"
+      echo "  │     # Instalar servicios"
+      echo "  │     apt update && apt install -y openssh-server postgresql"
+      echo "  │"
+      echo "  │     # Configurar PostgreSQL para acceso remoto"
+      echo "  │     PG_CONF=\$(ls /etc/postgresql/*/main/postgresql.conf | head -1)"
+      echo "  │     PG_HBA=\$(ls /etc/postgresql/*/main/pg_hba.conf | head -1)"
+      echo "  │     sed -i \"s/#listen_addresses.*/listen_addresses = '*'/\" \"\$PG_CONF\""
+      echo "  │     echo 'host all all 0.0.0.0/0 md5' >> \"\$PG_HBA\""
+      echo "  │     systemctl enable postgresql"
+      echo "  │     systemctl restart postgresql"
+      echo "  │"
+      echo "  │     # Dar contraseña al usuario postgres"
+      echo "  │     su - postgres -c \"psql -c \\\"ALTER USER postgres WITH PASSWORD 'postgres';\\\"\""
+    fi
+    echo "  │"
+    echo "  │     # Configurar SSH: habilitar acceso root con llave"
+    echo "  │     sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config"
+    echo "  │     sed -i 's/#PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config"
+    echo "  │     sed -i 's/PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config"
+    echo "  │     systemctl enable ssh"
+    echo "  │     systemctl restart ssh"
+    echo "  │"
+    echo "  │     # Agregar llave pública del host"
+    echo "  │     mkdir -p /root/.ssh && chmod 700 /root/.ssh"
+    echo "  │     echo '$PUB_KEY' >> /root/.ssh/authorized_keys"
+    echo "  │     chmod 600 /root/.ssh/authorized_keys"
+    echo "  │"
+    echo "  │  4. Apagar la VM y tomar snapshot:"
+    echo "  │     VBoxManage controlvm \"$NAME\" poweroff"
+    echo "  │     VBoxManage snapshot \"$NAME\" take \"$SNAPSHOT_NAME\""
+    echo "  │"
+    echo "  │  5. No configures multiattach: NimbusDBaaS usa linked clones desde el snapshot '$SNAPSHOT_NAME'."
+  fi
+  echo "  └──────────────────────────────────────────────────"
 }
 
-# ── 3. Crear plantillas ────────────────────────────────────────────────────
-echo "[4/7] Creando plantilla MariaDB…"
-create_template "nimbus-mariadb-template"
-
-echo "[5/7] Creando plantilla PostgreSQL…"
-create_template "nimbus-pg-template"
+check_template "$MARIADB_TEMPLATE" "$MARIADB_IP" "mariadb"
+check_template "$PG_TEMPLATE" "$PG_IP" "postgresql"
 
 echo ""
-echo "[6/7] =============================================================="
-echo "  Pasos manuales requeridos después de instalar Debian en cada VM:"
-echo "  =================================================================="
+echo "[4/4] Resumen de comandos rápidos (ejecutar en PowerShell):"
 echo ""
-echo "  Para nimbus-mariadb-template:"
-echo "    apt update && apt install -y mariadb-server openssh-server"
-echo "    mariadb -u root -e \"ALTER USER 'root'@'localhost' IDENTIFIED BY 'root'; FLUSH PRIVILEGES;\""
-echo "    # Habilitar bind-address en /etc/mysql/mariadb.conf.d/50-server.cnf → 0.0.0.0"
-echo "    systemctl enable mariadb ssh"
-echo "    mkdir -p /root/.ssh && echo '$(cat ${SSH_KEY}.pub)' >> /root/.ssh/authorized_keys"
-echo "    chmod 700 /root/.ssh && chmod 600 /root/.ssh/authorized_keys"
-echo "    # Instalar Guest Additions dentro de la VM"
-echo "    apt install -y build-essential dkms linux-headers-\$(uname -r) virtualbox-guest-dkms virtualbox-guest-utils virtualbox-guest-x11"
-echo "    systemctl enable vboxservice"
-echo "    systemctl restart vboxservice"
+echo "  # Verificar VMs registradas:"
+echo "  VBoxManage list vms"
 echo ""
-echo "  Para nimbus-pg-template:"
-echo "    apt update && apt install -y postgresql openssh-server"
-echo "    # Editar /etc/postgresql/*/main/pg_hba.conf → host all all 0.0.0.0/0 md5"
-echo "    # Editar /etc/postgresql/*/main/postgresql.conf → listen_addresses = '*'"
-echo "    systemctl enable postgresql ssh"
-echo "    mkdir -p /root/.ssh && echo '$(cat ${SSH_KEY}.pub)' >> /root/.ssh/authorized_keys"
-echo "    chmod 700 /root/.ssh && chmod 600 /root/.ssh/authorized_keys"
-echo "    # Instalar Guest Additions dentro de la VM"
-echo "    apt install -y build-essential dkms linux-headers-\$(uname -r) virtualbox-guest-dkms virtualbox-guest-utils virtualbox-guest-x11"
-echo "    systemctl enable vboxservice"
-echo "    systemctl restart vboxservice"
+echo "  # Verificar snapshots:"
+echo "  VBoxManage snapshot \"$MARIADB_TEMPLATE\" list"
+echo "  VBoxManage snapshot \"$PG_TEMPLATE\" list"
 echo ""
-echo "[7/7] Cuando ambas VMs estén listas, apagar las VMs y configurar los discos en modo multiconexión:"
+echo "  # Tomar snapshots (con VMs apagadas):"
+echo "  VBoxManage snapshot \"$MARIADB_TEMPLATE\" take \"$SNAPSHOT_NAME\""
+echo "  VBoxManage snapshot \"$PG_TEMPLATE\" take \"$SNAPSHOT_NAME\""
 echo ""
-echo "  1. Apagar las VMs manualmente o con los siguientes comandos:"
-echo "    VBoxManage controlvm nimbus-mariadb-template poweroff"
-echo "    VBoxManage controlvm nimbus-pg-template poweroff"
+echo "  # Probar SSH desde Windows:"
+echo "  ssh -i \$env:USERPROFILE\\.ssh\\id_rsa root@$MARIADB_IP"
+echo "  ssh -i \$env:USERPROFILE\\.ssh\\id_rsa root@$PG_IP"
 echo ""
-echo "  2. Configurar los discos principales en modo multiconexión (multiattach):"
-echo "    VBoxManage modifymedium disk \"${VBOX_FOLDER}/nimbus-mariadb-template/nimbus-mariadb-template.vdi\" --type multiattach"
-echo "    VBoxManage modifymedium disk \"${VBOX_FOLDER}/nimbus-pg-template/nimbus-pg-template.vdi\" --type multiattach"
-echo ""
-echo "=== Setup completado. Ahora puedes iniciar NimbusDBaaS ==="
+echo "=================================================="
+echo "  Cuando ambas plantillas estén listas, ejecuta:"
+echo "  go run ./cmd/server"
+echo "  y abre http://localhost:8080"
+echo "=================================================="

@@ -116,8 +116,14 @@ func (r *Router) createInstance(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	cr.DBName = sanitize(cr.DBName)
-	cr.Username = sanitize(cr.Username)
+	if err := provisioner.ValidateIdentifier(cr.DBName, "db_name", cr.Engine); err != nil {
+		jsonError(w, err.Error(), 400)
+		return
+	}
+	if err := provisioner.ValidateIdentifier(cr.Username, "username", cr.Engine); err != nil {
+		jsonError(w, err.Error(), 400)
+		return
+	}
 
 	inst := &models.Instance{
 		ID:         newUUID(),
@@ -176,8 +182,6 @@ func (r *Router) handleInstance(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 		if err := r.prov.Destroy(inst); err != nil {
-			_ = r.store.DeleteLogsByInstance(id)
-			_ = r.store.DeleteInstance(id)
 			jsonError(w, fmt.Sprintf("error eliminando %s: %v", inst.DBName, err), 500)
 			return
 		}
@@ -256,16 +260,6 @@ func jsonError(w http.ResponseWriter, msg string, code int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
-}
-
-func sanitize(s string) string {
-	var b strings.Builder
-	for _, r := range s {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' {
-			b.WriteRune(r)
-		}
-	}
-	return b.String()
 }
 
 func newUUID() string {

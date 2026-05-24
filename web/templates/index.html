@@ -149,6 +149,11 @@
   .form-group { display: flex; flex-direction: column; gap: 5px; }
   .form-group.full { grid-column: 1 / -1; }
   .form-label { font-size: 11px; font-weight: 500; color: var(--text-secondary); letter-spacing: 0.02em; }
+  .form-help {
+    font-size: 10px;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
   .form-input {
     height: 36px; padding: 0 12px;
     border: 1px solid var(--border-md);
@@ -230,6 +235,14 @@
   }
   .btn-danger:hover { background: #FEE2E2; }
   .btn-danger i { font-size: 14px; }
+  .btn-danger:disabled,
+  .btn-secondary:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+  }
+  .btn-loading {
+    pointer-events: none;
+  }
 
   /* toast */
   .toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 100; display: flex; flex-direction: column; gap: 8px; }
@@ -435,11 +448,13 @@
         <div class="form-grid">
           <div class="form-group">
             <label class="form-label">Nombre de la base de datos</label>
-            <input class="form-input" id="inp-dbname" type="text" placeholder="ej. Clientes, Inventario…" />
+            <input class="form-input" id="inp-dbname" type="text" placeholder="ej. clientes_ventas" spellcheck="false" autocomplete="off" />
+            <div class="form-help" id="help-dbname">Solo letras, números y _. Reservados: admin, system, postgres, template0, template1, mysql, root, information_schema, performance_schema.</div>
           </div>
           <div class="form-group">
             <label class="form-label">Usuario administrador</label>
-            <input class="form-input" id="inp-username" type="text" placeholder="ej. carlos" />
+            <input class="form-input" id="inp-username" type="text" placeholder="ej. carlos_admin" spellcheck="false" autocomplete="off" />
+            <div class="form-help" id="help-username">Solo letras, números y _. Reservados: admin, system, postgres, template0, template1, mysql, root, information_schema, performance_schema.</div>
           </div>
           <div class="form-group full">
             <label class="form-label">Motor de base de datos</label>
@@ -650,6 +665,12 @@ let selectedEngine = 'mariadb';
 let sqlFileContent = '';
 let pollTimer = null;
 let pendingDeleteId = null;
+let deleteInProgress = false;
+const identifierPattern = /^[a-zA-Z0-9_]+$/;
+const reservedNames = {
+  mariadb: new Set(['admin', 'system', 'mysql', 'root', 'information_schema', 'performance_schema']),
+  postgresql: new Set(['admin', 'system', 'postgres', 'template0', 'template1'])
+};
 
 // ── Sidebar navigation ─────────────────────────────────
 document.querySelectorAll('.sidebar-item').forEach(item => {
@@ -712,13 +733,51 @@ function handleFile(file) {
   reader.readAsText(file);
 }
 
+function setFieldError(input, message) {
+  input.classList.add('error');
+  input.setCustomValidity(message);
+}
+
+function clearFieldError(input) {
+  input.classList.remove('error');
+  input.setCustomValidity('');
+}
+
+function validateIdentifierField(input, fieldLabel) {
+  const value = input.value.trim();
+  if (!value) {
+    const message = `El ${fieldLabel} es requerido`;
+    setFieldError(input, message);
+    return message;
+  }
+  if (!identifierPattern.test(value)) {
+    const message = `El ${fieldLabel} solo puede contener letras, números y _`;
+    setFieldError(input, message);
+    return message;
+  }
+  if (reservedNames[selectedEngine].has(value.toLowerCase())) {
+    const message = `${fieldLabel} usa un nombre reservado: ${value}`;
+    setFieldError(input, message);
+    return message;
+  }
+  clearFieldError(input);
+  return '';
+}
+
+document.getElementById('inp-dbname').addEventListener('input', e => clearFieldError(e.target));
+document.getElementById('inp-username').addEventListener('input', e => clearFieldError(e.target));
+
 // ── Create instance ─────────────────────────────────────
 document.getElementById('btn-create').addEventListener('click', async () => {
   const dbName = document.getElementById('inp-dbname').value.trim();
   const username = document.getElementById('inp-username').value.trim();
 
-  if (!dbName) { showToast('El nombre de la base de datos es requerido', 'error'); return; }
-  if (!username) { showToast('El nombre de usuario es requerido', 'error'); return; }
+  const dbNameError = validateIdentifierField(document.getElementById('inp-dbname'), 'nombre de la base de datos');
+  const usernameError = validateIdentifierField(document.getElementById('inp-username'), 'nombre de usuario');
+  if (dbNameError || usernameError) {
+    showToast(dbNameError || usernameError, 'error');
+    return;
+  }
 
   const btn = document.getElementById('btn-create');
   btn.disabled = true;
@@ -754,12 +813,15 @@ document.getElementById('btn-create').addEventListener('click', async () => {
 
 // ── Delete flow ─────────────────────────────────────────
 const deleteModal = document.getElementById('delete-modal');
+const btnCancelDelete = document.getElementById('btn-cancel-delete');
+const btnConfirmDelete = document.getElementById('btn-confirm-delete');
+const deleteModalBody = document.getElementById('delete-modal-body');
 
-document.getElementById('btn-cancel-delete').addEventListener('click', () => closeModal());
-document.getElementById('btn-confirm-delete').addEventListener('click', async () => {
-  if (!pendingDeleteId) return;
-  const deleteName = document.getElementById('delete-modal-body').dataset.instanceName || '';
-  closeModal();
+btnCancelDelete.addEventListener('click', () => closeModal());
+btnConfirmDelete.addEventListener('click', async () => {
+  if (!pendingDeleteId || deleteInProgress) return;
+  const deleteName = deleteModalBody.dataset.instanceName || '';
+  setDeleteInProgress(true);
   try {
     const res = await fetch(`/api/instances/${pendingDeleteId}`, { method: 'DELETE' });
     if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
@@ -767,19 +829,39 @@ document.getElementById('btn-confirm-delete').addEventListener('click', async ()
     await refresh();
   } catch(err) {
     showToast(err.message, 'error');
+  } finally {
+    deleteInProgress = false;
+    pendingDeleteId = null;
+    updateDeleteModalState(false);
+    closeModal();
   }
-  pendingDeleteId = null;
 });
 
 function confirmDelete(id, name) {
+  if (deleteInProgress) return;
   pendingDeleteId = id;
-  const body = document.getElementById('delete-modal-body');
-  body.dataset.instanceName = name;
-  body.textContent =
+  deleteModalBody.dataset.instanceName = name;
+  deleteModalBody.textContent =
     `Se detendrá y eliminará la máquina virtual de "${name}". Esta acción no se puede deshacer.`;
   deleteModal.classList.add('open');
 }
-function closeModal() { deleteModal.classList.remove('open'); pendingDeleteId = null; }
+function closeModal() {
+  if (deleteInProgress) return;
+  deleteModal.classList.remove('open');
+  pendingDeleteId = null;
+}
+function setDeleteInProgress(value) {
+  deleteInProgress = value;
+  updateDeleteModalState(value);
+}
+function updateDeleteModalState(isBusy) {
+  btnConfirmDelete.disabled = isBusy;
+  btnCancelDelete.disabled = isBusy;
+  btnConfirmDelete.classList.toggle('btn-loading', isBusy);
+  btnConfirmDelete.innerHTML = isBusy
+    ? '<i class="ti ti-loader-2 ti-spin"></i> Eliminando...'
+    : '<i class="ti ti-trash"></i> Eliminar';
+}
 deleteModal.addEventListener('click', e => { if (e.target === deleteModal) closeModal(); });
 
 async function retryInstance(id, name) {
