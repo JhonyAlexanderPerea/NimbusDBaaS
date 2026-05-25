@@ -223,40 +223,14 @@ func (p *Provisioner) assignAndWaitForIP(inst *models.Instance, newIP string) (s
 	}
 	_ = p.store.AddLog("OK", fmt.Sprintf("SSH disponible en %s", templateIP), inst.ID)
 
-	// Cambiar solo la línea address de la interfaz host-only y reiniciar networking sin bloquear la sesión
-	// Use ip(8) to replace the address on the interface currently holding the template IP.
-	// This avoids restarting the networking service (which can be slow inside the guest).
-	// Persist the IP across reboots by installing a small script and a systemd unit
-	// while also applying the IP immediately with `ip addr replace`.
+	// Persistimos la nueva IP en la config clásica de Debian y la aplicamos en caliente.
+	// La IP vieja se limpia después, cuando la nueva ya responde por SSH.
 	changeIPCmd := fmt.Sprintf(`ifname=$(ip -o -4 addr show | awk '/%s\./ {print $2; exit}'); \
 if [ -z "$ifname" ]; then echo "no-iface"; exit 1; fi; \
-ip addr replace %s/24 dev "$ifname"; \
+sed -i "s/^[[:space:]]*address[[:space:]]\+%s$/  address %s/" /etc/network/interfaces || true; \
+ip addr add %s/24 dev "$ifname" 2>/dev/null || ip addr replace %s/24 dev "$ifname"; \
 ip neigh flush dev "$ifname" || true; \
-# persist on reboot: write helper script and systemd unit
-cat > /usr/local/bin/nimbus-set-ip.sh <<'NIMBUS'
-#!/bin/sh
-ifname=$(ip -o -4 addr show | awk '/%s\./ {print $2; exit}')
-if [ -z "$ifname" ]; then exit 0; fi
-ip addr replace %s/24 dev "$ifname"
-ip neigh flush dev "$ifname" || true
-NIMBUS
-chmod +x /usr/local/bin/nimbus-set-ip.sh
-cat > /etc/systemd/system/nimbus-set-ip.service <<'UNIT'
-[Unit]
-Description=Set Nimbus static IP on boot
-After=network.target
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/nimbus-set-ip.sh
-RemainAfterExit=yes
-
-[Install]
-WantedBy=multi-user.target
-UNIT
-systemctl daemon-reload || true
-systemctl enable nimbus-set-ip.service || true
-echo 'ip-applied'`, p.cfg.BaseIP, newIP, p.cfg.BaseIP, newIP)
+echo 'ip-applied'`, p.cfg.BaseIP, templateIP, newIP, newIP, newIP)
 	_ = p.store.AddLog("INFO", fmt.Sprintf("Reconfigurando IP (apply+persist unit) %s → %s", templateIP, newIP), inst.ID)
 	outErr := p.runSSH(templateIP, changeIPCmd)
 	if outErr != nil {
@@ -269,6 +243,17 @@ echo 'ip-applied'`, p.cfg.BaseIP, newIP, p.cfg.BaseIP, newIP)
 		return "", fmt.Errorf("SSH no disponible en nueva IP %s: %w", newIP, err)
 	}
 	_ = p.store.AddLog("OK", fmt.Sprintf("SSH disponible en %s", newIP), inst.ID)
+
+	cleanupOldIPCmd := fmt.Sprintf(`ifname=$(ip -o -4 addr show | awk '/%s/ {print $2; exit}'); \
+if [ -z "$ifname" ]; then echo "no-iface"; exit 1; fi; \
+ip addr del %s/24 dev "$ifname" 2>/dev/null || true; \
+ip neigh flush dev "$ifname" || true; \
+echo 'old-ip-removed'`, newIP, templateIP)
+
+	_ = p.store.AddLog("INFO", fmt.Sprintf("Limpiando IP heredada %s", templateIP), inst.ID)
+	if err := p.runSSH(newIP, cleanupOldIPCmd); err != nil {
+		return "", fmt.Errorf("limpiar IP heredada %s: %w", templateIP, err)
+	}
 
 	return newIP, nil
 }
